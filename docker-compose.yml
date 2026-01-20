@@ -1,0 +1,101 @@
+version: '3.9'
+
+services:
+  # PostgreSQL Database
+  postgres:
+    image: postgres:16-alpine
+    container_name: linkko-postgres
+    environment:
+      POSTGRES_DB: linkko
+      POSTGRES_USER: linkko
+      POSTGRES_PASSWORD: linkko
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U linkko"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - linkko-network
+
+  # Redis
+  redis:
+    image: redis:7-alpine
+    container_name: linkko-redis
+    command: redis-server --requirepass localpass
+    ports:
+      - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - linkko-network
+
+  # Jaeger (OpenTelemetry collector)
+  jaeger:
+    image: jaegertracing/all-in-one:1.54
+    container_name: linkko-jaeger
+    ports:
+      - "16686:16686"  # Jaeger UI
+      - "4317:4317"    # OTLP gRPC
+      - "4318:4318"    # OTLP HTTP
+    environment:
+      - COLLECTOR_OTLP_ENABLED=true
+    networks:
+      - linkko-network
+
+  # Database Migration
+  migrate:
+    build: .
+    container_name: linkko-migrate
+    command: ["migrate"]
+    environment:
+      - DATABASE_URL=postgres://linkko:linkko@postgres:5432/linkko?sslmode=disable
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: on-failure
+    networks:
+      - linkko-network
+
+  # API Service
+  api:
+    build: .
+    container_name: linkko-api
+    command: ["serve"]
+    env_file:
+      - .env
+    environment:
+      - DATABASE_URL=postgres://linkko:linkko@postgres:5432/linkko?sslmode=disable
+      - REDIS_URL=redis://:localpass@redis:6379
+      - OTEL_EXPORTER_OTLP_ENDPOINT=jaeger:4317
+      - PORT=8080
+    ports:
+      - "8080:8080"
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+      jaeger:
+        condition: service_started
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost:8080/ready"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+    networks:
+      - linkko-network
+
+volumes:
+  postgres_data:
+
+networks:
+  linkko-network:
+    driver: bridge

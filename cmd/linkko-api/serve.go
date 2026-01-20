@@ -1,0 +1,267 @@
+package main
+
+import (
+	"context"
+	"fmt"
+	"net/http"
+	"os"
+	"os/signal"
+	"syscall"
+	"time"
+
+	"linkko-api/internal/auth"
+	"linkko-api/internal/config"
+	"linkko-api/internal/database"
+
+	// "linkko-api/internal/http/handler" // TODO: Uncomment when handler is fixed
+	"linkko-api/internal/http/middleware"
+	"linkko-api/internal/observability/logger"
+
+	// "linkko-api/internal/ratelimit" // TODO: Uncomment when handler is fixed
+	"linkko-api/internal/repo"
+	// "linkko-api/internal/service" // TODO: Uncomment when handler is fixed
+	"linkko-api/internal/telemetry"
+
+	"github.com/go-chi/chi/v5"
+	"github.com/redis/go-redis/v9"
+	"github.com/spf13/cobra"
+	"go.uber.org/zap"
+)
+
+var serveCmd = &cobra.Command{
+	Use:   "serve",
+	Short: "Start the API server",
+	Long:  `Start the Linkko API HTTP server with all middlewares and observability`,
+	RunE:  runServe,
+}
+
+func init() {
+	rootCmd.AddCommand(serveCmd)
+}
+
+func runServe(cmd *cobra.Command, args []string) error {
+	ctx := context.Background()
+
+	// Load configuration
+	cfg, err := config.LoadConfig()
+	if err != nil {
+		return fmt.Errorf("failed to load config: %w", err)
+	}
+
+	// Initialize logger
+	log, err := logger.New(cfg.OTELServiceName, "info")
+	if err != nil {
+		return fmt.Errorf("failed to create logger: %w", err)
+	}
+
+	log.Info(context.Background(), "starting linkko api",
+		zap.String("version", "1.0.0"),
+		zap.String("service", cfg.OTELServiceName),
+	)
+
+	// Run database migrations
+	log.Info(ctx, "running database migrations")
+	if err := database.RunMigrations(cfg.DatabaseURL); err != nil {
+		return fmt.Errorf("failed to run migrations: %w", err)
+	}
+	log.Info(ctx, "migrations completed successfully")
+
+	// Initialize telemetry
+	log.Info(ctx, "initializing telemetry")
+	tracerProvider, err := telemetry.InitTracer(ctx, cfg.OTELServiceName, cfg.OTELExporterEndpoint, cfg.OTELSamplingRatio)
+	if err != nil {
+		return fmt.Errorf("failed to initialize tracer: %w", err)
+	}
+	defer func() {
+		shutdownCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+		if err := tracerProvider.Shutdown(shutdownCtx); err != nil {
+			log.Error(shutdownCtx, "failed to shutdown tracer provider", zap.Error(err))
+		}
+	}()
+
+	meterProvider, metrics, err := telemetry.InitMetrics(ctx, cfg.OTELServiceName, cfg.OTELExporterEndpoint)
+	if err != nil {
+		return fmt.Errorf("failed to initialize metrics: %w", err)
+	}
+	defer func() {
+		shutdownCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+		if err := meterProvider.Shutdown(shutdownCtx); err != nil {
+			log.Error(shutdownCtx, "failed to shutdown meter provider", zap.Error(err))
+		}
+	}()
+	log.Info(ctx, "telemetry initialized")
+
+	// Connect to database
+	log.Info(ctx, "connecting to database")
+	pool, err := database.NewPool(ctx, cfg.DatabaseURL)
+	if err != nil {
+		return fmt.Errorf("failed to connect to database: %w", err)
+	}
+	defer pool.Close()
+	log.Info(ctx, "database connected")
+
+	// Connect to Redis
+	log.Info(ctx, "connecting to redis")
+	redisOpts, err := redis.ParseURL(cfg.RedisURL)
+	if err != nil {
+		return fmt.Errorf("failed to parse Redis URL: %w", err)
+	}
+	redisClient := redis.NewClient(redisOpts)
+	defer redisClient.Close()
+
+	// Ping Redis to ensure connectivity
+	if err := redisClient.Ping(ctx).Err(); err != nil {
+		return fmt.Errorf("failed to connect to Redis: %w", err)
+	}
+	log.Info(ctx, "redis connected")
+
+	// Initialize JWT key store and resolver
+	log.Info(ctx, "initializing JWT authentication")
+	keyStore := auth.NewKeyStore()
+
+	// Load HS256 key for CRM web
+	keyStore.LoadHS256Key("linkko-crm-web", "v1", []byte(cfg.JWTSecretCRMV1))
+
+	// Load RS256 key for MCP server
+	if err := keyStore.LoadRS256Key("linkko-mcp-server", "v1", cfg.JWTPublicKeyMCPV1); err != nil {
+		return fmt.Errorf("failed to load MCP public key: %w", err)
+	}
+
+	// Create validators
+	hs256Validator := auth.NewHS256Validator(keyStore, "linkko-crm-web")
+	rs256Validator := auth.NewRS256Validator(keyStore, "linkko-mcp-server")
+
+	// Create resolver
+	allowedIssuers := cfg.GetAllowedIssuers()
+	resolver := auth.NewKeyResolver(allowedIssuers, []string{cfg.JWTAudience})
+	resolver.RegisterValidator("linkko-crm-web", hs256Validator)
+	resolver.RegisterValidator("linkko-mcp-server", rs256Validator)
+	log.Info(ctx, "JWT authentication initialized", zap.Strings("allowed_issuers", allowedIssuers))
+
+	// Initialize repositories
+	idempotencyRepo := repo.NewIdempotencyRepo(pool)
+	workspaceRepo := repo.NewWorkspaceRepository(pool)
+	// auditRepo := repo.NewAuditRepo(pool)
+	// contactRepo := repo.NewContactRepository(pool)
+
+	// Initialize services
+	// contactService := service.NewContactService(contactRepo, auditRepo, workspaceRepo)
+
+	// Initialize handlers
+	// contactHandler := handler.NewContactHandler(contactService)
+	_ = idempotencyRepo // TODO: Remove once contacts endpoints are uncommented
+	_ = workspaceRepo   // TODO: Remove once contacts endpoints are uncommented
+
+	// Initialize rate limiter
+	// rateLimiter := ratelimit.NewRedisRateLimiter(redisClient, metrics.RateLimitRejections)
+	_ = metrics // TODO: Remove once metrics are used
+
+	// Create router
+	r := chi.NewRouter()
+
+	// Global middlewares (applied to all routes)
+	// CRITICAL: Order matters - RequestID → Recovery → Logging → Telemetry
+	r.Use(middleware.RequestIDMiddleware)                // 1. Generate/read request ID
+	r.Use(middleware.RecoveryMiddleware(log))            // 2. Catch panics before logging
+	r.Use(middleware.RequestLoggingMiddleware(log))      // 3. Log all requests with request_id
+	r.Use(telemetry.OTelMiddleware(cfg.OTELServiceName)) // 4. OpenTelemetry tracing
+	r.Use(telemetry.MetricsMiddleware(metrics))          // 5. Prometheus metrics
+
+	// Public routes
+	// /health - Liveness probe (no dependencies checked)
+	r.Get("/health", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+		w.Write([]byte(`{"status":"ok"}`))
+	})
+
+	// /ready - Readiness probe (checks critical dependencies)
+	r.Get("/ready", func(w http.ResponseWriter, r *http.Request) {
+		ctx, cancel := context.WithTimeout(r.Context(), 2*time.Second)
+		defer cancel()
+
+		// Check database connectivity
+		if err := pool.Ping(ctx); err != nil {
+			log.Error(ctx, "readiness check failed: database unavailable", zap.Error(err))
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusServiceUnavailable)
+			w.Write([]byte(`{"status":"error","message":"database unavailable"}`))
+			return
+		}
+
+		// Check Redis connectivity
+		if err := redisClient.Ping(ctx).Err(); err != nil {
+			log.Error(ctx, "readiness check failed: redis unavailable", zap.Error(err))
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusServiceUnavailable)
+			w.Write([]byte(`{"status":"error","message":"redis unavailable"}`))
+			return
+		}
+
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+		w.Write([]byte(`{"status":"ready"}`))
+	})
+
+	// Protected routes with workspace isolation
+	// TODO: Uncomment when contact handler compilation errors are fixed
+	/*
+		r.Route("/v1/workspaces/{workspaceId}", func(r chi.Router) {
+			// Apply authentication, workspace validation, and rate limiting
+			r.Use(auth.JWTAuthMiddleware(resolver))
+			r.Use(middleware.WorkspaceMiddleware)
+			r.Use(middleware.RateLimitMiddleware(rateLimiter, cfg.RateLimitPerWorkspacePerMin))
+
+			// Contacts endpoints
+			r.Route("/contacts", func(r chi.Router) {
+				r.Get("/", contactHandler.ListContacts)
+				r.With(middleware.IdempotencyMiddleware(idempotencyRepo)).Post("/", contactHandler.CreateContact)
+
+				r.Route("/{contactId}", func(r chi.Router) {
+					r.Get("/", contactHandler.GetContact)
+					r.With(middleware.IdempotencyMiddleware(idempotencyRepo)).Patch("/", contactHandler.UpdateContact)
+					r.Delete("/", contactHandler.DeleteContact)
+				})
+			})
+		})
+	*/
+
+	// Create HTTP server
+	server := &http.Server{
+		Addr:         ":" + cfg.Port,
+		Handler:      r,
+		ReadTimeout:  10 * time.Second,
+		WriteTimeout: 30 * time.Second,
+		IdleTimeout:  60 * time.Second,
+	}
+
+	// Start server in goroutine
+	go func() {
+		log.Info(ctx, "starting http server", zap.String("addr", server.Addr))
+		if err := server.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+			log.Error(ctx, "failed to start server", zap.Error(err))
+			os.Exit(1)
+		}
+	}()
+
+	// Wait for interrupt signal for graceful shutdown
+	sigChan := make(chan os.Signal, 1)
+	signal.Notify(sigChan, os.Interrupt, syscall.SIGTERM)
+	<-sigChan
+
+	log.Info(ctx, "shutdown signal received, starting graceful shutdown")
+
+	// Graceful shutdown with timeout
+	shutdownCtx, cancel := context.WithTimeout(context.Background(), 25*time.Second)
+	defer cancel()
+
+	// Shutdown HTTP server
+	if err := server.Shutdown(shutdownCtx); err != nil {
+		log.Error(shutdownCtx, "server shutdown error", zap.Error(err))
+	}
+
+	log.Info(shutdownCtx, "shutdown complete")
+	return nil
+}

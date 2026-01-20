@@ -1,0 +1,33 @@
+# Git
+.git
+.gitignore
+
+# Environment
+.env
+.env.*
+
+# Documentation
+*.md
+docs/
+
+# IDE
+.vscode
+.idea
+*.swp
+*.swo
+
+# Temporary files
+tmp/
+temp/
+*.log
+
+# Build artifacts
+linkko-api
+api
+migrate
+cleanup
+
+# Test files
+*_test.go
+testdata/
+coverage.out
