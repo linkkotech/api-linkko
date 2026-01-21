@@ -22,6 +22,7 @@ type Config struct {
 	JWTAudience       string `env:"JWT_AUDIENCE,required"`
 
 	// OpenTelemetry
+	OTELEnabled          bool    `env:"OTEL_ENABLED" envDefault:"true"`
 	OTELExporterEndpoint string  `env:"OTEL_EXPORTER_OTLP_ENDPOINT" envDefault:"localhost:4317"`
 	OTELServiceName      string  `env:"OTEL_SERVICE_NAME" envDefault:"linkko-api-go"`
 	OTELSamplingRatio    float64 `env:"OTEL_SAMPLING_RATIO" envDefault:"0.1"`

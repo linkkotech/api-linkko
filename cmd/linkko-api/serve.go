@@ -23,6 +23,8 @@ import (
 	"github.com/go-chi/chi/v5"
 	"github.com/redis/go-redis/v9"
 	"github.com/spf13/cobra"
+	sdkmetric "go.opentelemetry.io/otel/sdk/metric"
+	sdktrace "go.opentelemetry.io/otel/sdk/trace"
 	"go.uber.org/zap"
 )
 
@@ -66,30 +68,48 @@ func runServe(cmd *cobra.Command, args []string) error {
 
 	// Initialize telemetry
 	log.Info(ctx, "initializing telemetry")
-	tracerProvider, err := telemetry.InitTracer(ctx, cfg.OTELServiceName, cfg.OTELExporterEndpoint, cfg.OTELSamplingRatio)
-	if err != nil {
-		return fmt.Errorf("failed to initialize tracer: %w", err)
-	}
-	defer func() {
-		shutdownCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-		defer cancel()
-		if err := tracerProvider.Shutdown(shutdownCtx); err != nil {
-			log.Error(shutdownCtx, "failed to shutdown tracer provider", zap.Error(err))
-		}
-	}()
 
-	meterProvider, metrics, err := telemetry.InitMetrics(ctx, cfg.OTELServiceName, cfg.OTELExporterEndpoint)
-	if err != nil {
-		return fmt.Errorf("failed to initialize metrics: %w", err)
-	}
-	defer func() {
-		shutdownCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-		defer cancel()
-		if err := meterProvider.Shutdown(shutdownCtx); err != nil {
-			log.Error(shutdownCtx, "failed to shutdown meter provider", zap.Error(err))
+	var tracerProvider *sdktrace.TracerProvider
+	var meterProvider *sdkmetric.MeterProvider
+	var metrics *telemetry.Metrics
+
+	// Inicializar telemetria apenas se habilitada
+	if cfg.OTELEnabled {
+		// Inicializar tracer
+		tp, err := telemetry.InitTracer(ctx, cfg.OTELServiceName, cfg.OTELExporterEndpoint, cfg.OTELSamplingRatio)
+		if err != nil {
+			log.Warn(ctx, "failed to initialize tracer, continuing without tracing", zap.Error(err))
+		} else {
+			tracerProvider = tp
+			defer func() {
+				shutdownCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+				defer cancel()
+				if err := tracerProvider.Shutdown(shutdownCtx); err != nil {
+					log.Error(shutdownCtx, "failed to shutdown tracer provider", zap.Error(err))
+				}
+			}()
 		}
-	}()
-	log.Info(ctx, "telemetry initialized")
+
+		// Inicializar metrics
+		mp, m, err := telemetry.InitMetrics(ctx, cfg.OTELServiceName, cfg.OTELExporterEndpoint)
+		if err != nil {
+			log.Warn(ctx, "failed to initialize metrics, continuing without metrics", zap.Error(err))
+		} else {
+			meterProvider = mp
+			metrics = m
+			defer func() {
+				shutdownCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+				defer cancel()
+				if err := meterProvider.Shutdown(shutdownCtx); err != nil {
+					log.Error(shutdownCtx, "failed to shutdown meter provider", zap.Error(err))
+				}
+			}()
+		}
+
+		log.Info(ctx, "telemetry initialized", zap.Bool("tracing", tracerProvider != nil), zap.Bool("metrics", metrics != nil))
+	} else {
+		log.Info(ctx, "telemetry disabled")
+	}
 
 	// Connect to database
 	log.Info(ctx, "connecting to database")
