@@ -4,6 +4,13 @@
 -- Author: Linkko Platform Team
 
 -- =====================================================
+-- RECOVERY COMMAND (if migration is dirty):
+-- Run this in Supabase SQL Editor to reset dirty state:
+--   UPDATE schema_migrations SET dirty = false WHERE version = 3;
+--   DELETE FROM schema_migrations WHERE version = 3 AND dirty = true;
+-- =====================================================
+
+-- =====================================================
 -- Table: WorkspaceRole
 -- Purpose: Define available roles in a workspace
 -- =====================================================
@@ -13,6 +20,9 @@ CREATE TABLE IF NOT EXISTS "WorkspaceRole" (
     description TEXT,                       -- Human-readable description
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
+
+-- Ensure description column exists (defensive against Prisma-created tables)
+ALTER TABLE "WorkspaceRole" ADD COLUMN IF NOT EXISTS "description" TEXT;
 
 -- Insert default workspace roles
 INSERT INTO "WorkspaceRole" (id, name, description) VALUES
@@ -27,12 +37,12 @@ ON CONFLICT (id) DO NOTHING;
 -- Purpose: Map users to workspaces with roles (junction table)
 -- =====================================================
 CREATE TABLE IF NOT EXISTS "WorkspaceMember" (
-    "userId" UUID NOT NULL,                 -- Actor ID (user or AI agent)
-    "workspaceId" UUID NOT NULL,            -- Workspace ID
+    "userId" TEXT NOT NULL,                 -- Actor ID (user or AI agent) - TEXT for Prisma compatibility
+    "workspaceId" TEXT NOT NULL,            -- Workspace ID - TEXT for Prisma compatibility
     "workspaceRoleId" TEXT NOT NULL,        -- Role ID (FK to WorkspaceRole)
     
     -- Metadata
-    invited_by UUID,                        -- User who invited this member
+    invited_by TEXT,                        -- User who invited this member
     invited_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     accepted_at TIMESTAMPTZ,                -- NULL if invitation pending
     
@@ -65,8 +75,8 @@ CREATE INDEX IF NOT EXISTS idx_user_workspaces
 -- =====================================================
 COMMENT ON TABLE "WorkspaceRole" IS 'Available workspace roles for RBAC (source of truth)';
 COMMENT ON TABLE "WorkspaceMember" IS 'Junction table mapping users to workspaces with roles';
-COMMENT ON COLUMN "WorkspaceMember"."userId" IS 'Actor ID (user or AI agent) - maps to owner_id in contacts table';
-COMMENT ON COLUMN "WorkspaceMember"."workspaceId" IS 'Workspace ID for multi-tenant isolation';
+COMMENT ON COLUMN "WorkspaceMember"."userId" IS 'Actor ID (user or AI agent) - TEXT type for Prisma compatibility';
+COMMENT ON COLUMN "WorkspaceMember"."workspaceId" IS 'Workspace ID for multi-tenant isolation - TEXT type for Prisma compatibility';
 COMMENT ON COLUMN "WorkspaceMember"."workspaceRoleId" IS 'Role ID determining permissions (work_admin, work_manager, work_user, work_viewer)';
 
 -- =====================================================
@@ -75,7 +85,7 @@ COMMENT ON COLUMN "WorkspaceMember"."workspaceRoleId" IS 'Role ID determining pe
 -- Uncomment the following lines to add test data:
 -- 
 -- INSERT INTO "WorkspaceMember" ("userId", "workspaceId", "workspaceRoleId", invited_by, accepted_at) VALUES
---     ('00000000-0000-0000-0000-000000000001'::UUID, '11111111-1111-1111-1111-111111111111'::UUID, 'work_admin', NULL, NOW()),
---     ('00000000-0000-0000-0000-000000000002'::UUID, '11111111-1111-1111-1111-111111111111'::UUID, 'work_manager', '00000000-0000-0000-0000-000000000001'::UUID, NOW()),
---     ('00000000-0000-0000-0000-000000000003'::UUID, '11111111-1111-1111-1111-111111111111'::UUID, 'work_user', '00000000-0000-0000-0000-000000000001'::UUID, NOW()),
---     ('00000000-0000-0000-0000-000000000004'::UUID, '11111111-1111-1111-1111-111111111111'::UUID, 'work_viewer', '00000000-0000-0000-0000-000000000001'::UUID, NOW());
+--     ('00000000-0000-0000-0000-000000000001', '11111111-1111-1111-1111-111111111111', 'work_admin', NULL, NOW()),
+--     ('00000000-0000-0000-0000-000000000002', '11111111-1111-1111-1111-111111111111', 'work_manager', '00000000-0000-0000-0000-000000000001', NOW()),
+--     ('00000000-0000-0000-0000-000000000003', '11111111-1111-1111-1111-111111111111', 'work_user', '00000000-0000-0000-0000-000000000001', NOW()),
+--     ('00000000-0000-0000-0000-000000000004', '11111111-1111-1111-1111-111111111111', 'work_viewer', '00000000-0000-0000-0000-000000000001', NOW());
