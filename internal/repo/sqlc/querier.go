@@ -9,12 +9,33 @@ import (
 )
 
 type Querier interface {
+	CompanyExistsInWorkspace(ctx context.Context, arg CompanyExistsInWorkspaceParams) (bool, error)
 	// Verifica se um contato existe no workspace (usado por validações).
 	ContactExistsInWorkspace(ctx context.Context, arg ContactExistsInWorkspaceParams) (bool, error)
+	CreateActivity(ctx context.Context, arg CreateActivityParams) (Activity, error)
+	CreateCall(ctx context.Context, arg CreateCallParams) (Call, error)
+	CreateCompany(ctx context.Context, arg CreateCompanyParams) (CreateCompanyRow, error)
 	// Cria um novo contato no workspace (ID gerado pela aplicação).
 	CreateContact(ctx context.Context, arg CreateContactParams) (CreateContactRow, error)
+	CreateDeal(ctx context.Context, arg CreateDealParams) (Deal, error)
+	CreateDealHistory(ctx context.Context, arg CreateDealHistoryParams) (DealStageHistory, error)
+	CreateMeeting(ctx context.Context, arg CreateMeetingParams) (Meeting, error)
+	CreateMessage(ctx context.Context, arg CreateMessageParams) (Message, error)
+	CreateNote(ctx context.Context, arg CreateNoteParams) (Note, error)
+	CreatePortfolioItem(ctx context.Context, arg CreatePortfolioItemParams) (PortfolioItem, error)
 	// Criar nova task retornando o registro completo
 	CreateTask(ctx context.Context, arg CreateTaskParams) (CreateTaskRow, error)
+	DeleteDeal(ctx context.Context, arg DeleteDealParams) error
+	DeletePortfolioItem(ctx context.Context, arg DeletePortfolioItemParams) error
+	// =====================================================
+	// COMPANIES QUERIES - SQLc Generated
+	// =====================================================
+	// Tabela: "Company"
+	// Schema: camelCase com aspas duplas
+	// IDs: TEXT (não UUID)
+	// ENUMs: CompanyLifecycleStage, CompanySize (UPPERCASE)
+	// =====================================================
+	GetCompany(ctx context.Context, arg GetCompanyParams) (GetCompanyRow, error)
 	// =====================================================
 	// CONTACTS QUERIES - SQLc Generated
 	// =====================================================
@@ -24,6 +45,8 @@ type Querier interface {
 	// =====================================================
 	// Retorna um contato específico de um workspace (IDOR protection).
 	GetContact(ctx context.Context, arg GetContactParams) (GetContactRow, error)
+	GetDeal(ctx context.Context, arg GetDealParams) (GetDealRow, error)
+	GetPortfolioItem(ctx context.Context, arg GetPortfolioItemParams) (PortfolioItem, error)
 	// =====================================================
 	// Task Queries (Schema Real Sincronizado)
 	// =====================================================
@@ -32,17 +55,25 @@ type Querier interface {
 	// =====================================================
 	// Buscar task por ID com isolamento multi-tenant
 	GetTask(ctx context.Context, arg GetTaskParams) (GetTaskRow, error)
+	ListActivities(ctx context.Context, arg ListActivitiesParams) ([]Activity, error)
+	ListCompanies(ctx context.Context, arg ListCompaniesParams) ([]ListCompaniesRow, error)
 	// Lista contatos de um workspace com paginação cursor-based (created_at DESC).
 	// Filtros opcionais: ownerId, companyId, lifecycleStage, query (fulltext search).
 	ListContacts(ctx context.Context, arg ListContactsParams) ([]ListContactsRow, error)
+	ListDeals(ctx context.Context, arg ListDealsParams) ([]ListDealsRow, error)
+	ListPortfolioItems(ctx context.Context, arg ListPortfolioItemsParams) ([]PortfolioItem, error)
 	// Listar tasks com filtros opcionais
 	ListTasks(ctx context.Context, arg ListTasksParams) ([]ListTasksRow, error)
 	// Busca fulltext em contatos (usado por autocomplete/search).
 	SearchContactsByText(ctx context.Context, arg SearchContactsByTextParams) ([]SearchContactsByTextRow, error)
+	SoftDeleteCompany(ctx context.Context, arg SoftDeleteCompanyParams) error
 	// Soft delete de um contato (marca deletedAt + deletedById).
 	SoftDeleteContact(ctx context.Context, arg SoftDeleteContactParams) error
+	UpdateCompany(ctx context.Context, arg UpdateCompanyParams) (UpdateCompanyRow, error)
 	// Atualiza um contato existente (IDOR protection + optimistic locking via updatedAt).
 	UpdateContact(ctx context.Context, arg UpdateContactParams) (UpdateContactRow, error)
+	UpdateDeal(ctx context.Context, arg UpdateDealParams) (Deal, error)
+	UpdatePortfolioItem(ctx context.Context, arg UpdatePortfolioItemParams) (PortfolioItem, error)
 }
 
 var _ Querier = (*Queries)(nil)

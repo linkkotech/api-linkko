@@ -9,7 +9,6 @@ import (
 
 	"linkko-api/internal/domain"
 
-	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -147,7 +146,7 @@ func (r *TaskRepository) List(ctx context.Context, params domain.ListTasksParams
 
 // Get retrieves a single task by ID, scoped to workspace.
 // IDOR protection: returns not found if task exists but belongs to another workspace.
-func (r *TaskRepository) Get(ctx context.Context, workspaceID, taskID uuid.UUID) (*domain.Task, error) {
+func (r *TaskRepository) Get(ctx context.Context, workspaceID, taskID string) (*domain.Task, error) {
 	query := `
 		SELECT id, workspace_id, title, description, status, priority, type, 
 		       position, owner_id, assigned_to, contact_id, 
@@ -183,7 +182,7 @@ func (r *TaskRepository) Get(ctx context.Context, workspaceID, taskID uuid.UUID)
 // GetForUpdate retrieves a task with pessimistic lock (SELECT ... FOR UPDATE).
 // MANDATORY para operações de reordenação (Kanban drag-and-drop) para evitar race conditions.
 // Deve ser chamado dentro de uma transação.
-func (r *TaskRepository) GetForUpdate(ctx context.Context, tx pgx.Tx, workspaceID, taskID uuid.UUID) (*domain.Task, error) {
+func (r *TaskRepository) GetForUpdate(ctx context.Context, tx pgx.Tx, workspaceID, taskID string) (*domain.Task, error) {
 	query := `
 		SELECT id, workspace_id, title, description, status, priority, type, 
 		       position, owner_id, assigned_to, contact_id, 
@@ -220,7 +219,7 @@ func (r *TaskRepository) GetForUpdate(ctx context.Context, tx pgx.Tx, workspaceI
 // GetPositionBounds retorna as posições das tarefas vizinhas (before e after) com lock.
 // MANDATORY para cálculo de nova position durante drag-and-drop.
 // Retorna (posBefore, posAfter, error). Nil = não existe vizinho naquela direção.
-func (r *TaskRepository) GetPositionBounds(ctx context.Context, tx pgx.Tx, workspaceID uuid.UUID, status domain.TaskStatus, beforeID, afterID *uuid.UUID) (*float64, *float64, error) {
+func (r *TaskRepository) GetPositionBounds(ctx context.Context, tx pgx.Tx, workspaceID string, status domain.TaskStatus, beforeID, afterID *string) (*float64, *float64, error) {
 	var posBefore, posAfter *float64
 
 	// Lock beforeTask se fornecido
@@ -292,7 +291,7 @@ func (r *TaskRepository) Create(ctx context.Context, task *domain.Task) error {
 }
 
 // Update atualiza campos de uma tarefa (sem alterar position - usar UpdatePosition).
-func (r *TaskRepository) Update(ctx context.Context, workspaceID, taskID uuid.UUID, req *domain.UpdateTaskRequest) error {
+func (r *TaskRepository) Update(ctx context.Context, workspaceID, taskID string, req *domain.UpdateTaskRequest) error {
 	// Dynamic query builder para PATCH semântico
 	query := `UPDATE public."Task" SET updated_at = NOW()`
 	args := []interface{}{}
@@ -364,7 +363,7 @@ func (r *TaskRepository) Update(ctx context.Context, workspaceID, taskID uuid.UU
 
 // UpdatePosition atualiza position e status de uma tarefa (Kanban drag-and-drop).
 // MANDATORY: deve ser chamado dentro de uma transação após GetForUpdate/GetPositionBounds.
-func (r *TaskRepository) UpdatePosition(ctx context.Context, tx pgx.Tx, workspaceID, taskID uuid.UUID, newPosition float64, newStatus domain.TaskStatus) error {
+func (r *TaskRepository) UpdatePosition(ctx context.Context, tx pgx.Tx, workspaceID, taskID string, newPosition float64, newStatus domain.TaskStatus) error {
 	query := `
 		UPDATE public."Task"
 		SET position = $1, status = $2, updated_at = NOW()
@@ -384,7 +383,7 @@ func (r *TaskRepository) UpdatePosition(ctx context.Context, tx pgx.Tx, workspac
 }
 
 // SoftDelete marca uma tarefa como deletada (soft delete).
-func (r *TaskRepository) SoftDelete(ctx context.Context, workspaceID, taskID uuid.UUID) error {
+func (r *TaskRepository) SoftDelete(ctx context.Context, workspaceID, taskID string) error {
 	query := `
 		UPDATE public."Task"
 		SET deleted_at = NOW(), updated_at = NOW()
@@ -405,7 +404,7 @@ func (r *TaskRepository) SoftDelete(ctx context.Context, workspaceID, taskID uui
 
 // GetMaxPosition retorna a maior position em um status específico.
 // Usado para adicionar novas tarefas ao final da coluna.
-func (r *TaskRepository) GetMaxPosition(ctx context.Context, workspaceID uuid.UUID, status domain.TaskStatus) (float64, error) {
+func (r *TaskRepository) GetMaxPosition(ctx context.Context, workspaceID string, status domain.TaskStatus) (float64, error) {
 	query := `
 		SELECT COALESCE(MAX(position), 0)
 		FROM public."Task"

@@ -34,7 +34,7 @@ func NewContactRepository(pool *pgxpool.Pool) *ContactRepository {
 // Helper: converte sqlc row para domain.Contact
 func sqlcRowToDomainContact(row interface{}) *domain.Contact {
 	var c domain.Contact
-	
+
 	switch r := row.(type) {
 	case sqlc.GetContactRow:
 		c.ID = r.ID
@@ -114,7 +114,7 @@ func sqlcRowToDomainContact(row interface{}) *domain.Contact {
 			c.DeletedAt = &r.DeletedAt.Time
 		}
 	}
-	
+
 	return &c
 }
 
@@ -241,13 +241,13 @@ func (r *ContactRepository) Create(ctx context.Context, contact *domain.Contact)
 // Only updates non-nil fields from the request.
 func (r *ContactRepository) Update(ctx context.Context, workspaceID, contactID string, updates *domain.UpdateContactRequest, expectedUpdatedAt time.Time) (*domain.Contact, error) {
 	now := time.Now()
-	
+
 	// Converter Tags opcional
 	var tagLabels []string
 	if updates.Tags != nil {
 		tagLabels = *updates.Tags
 	}
-	
+
 	row, err := r.queries.UpdateContact(ctx, sqlc.UpdateContactParams{
 		ID:                contactID,
 		WorkspaceId:       workspaceID,
@@ -295,7 +295,7 @@ func (r *ContactRepository) Update(ctx context.Context, workspaceID, contactID s
 // Preserves data for audit and potential recovery.
 func (r *ContactRepository) SoftDelete(ctx context.Context, workspaceID, contactID string) error {
 	now := time.Now()
-	
+
 	err := r.queries.SoftDeleteContact(ctx, sqlc.SoftDeleteContactParams{
 		ID:          contactID,
 		WorkspaceId: workspaceID,

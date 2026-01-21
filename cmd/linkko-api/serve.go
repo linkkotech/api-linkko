@@ -146,18 +146,27 @@ func runServe(cmd *cobra.Command, args []string) error {
 	taskRepo := repo.NewTaskRepository(pool)
 	companyRepo := repo.NewCompanyRepository(pool)
 	pipelineRepo := repo.NewPipelineRepository(pool)
+	dealRepo := repo.NewDealRepository(pool)
+	activityRepo := repo.NewActivityRepository(pool)
+	portfolioRepo := repo.NewPortfolioRepository(pool)
 
 	// Initialize services
 	contactService := service.NewContactService(contactRepo, auditRepo, workspaceRepo, companyRepo)
 	taskService := service.NewTaskService(taskRepo, auditRepo, workspaceRepo)
 	companyService := service.NewCompanyService(companyRepo, auditRepo, workspaceRepo)
 	pipelineService := service.NewPipelineService(pipelineRepo, auditRepo, workspaceRepo)
+	dealService := service.NewDealService(dealRepo, pipelineRepo, workspaceRepo, auditRepo)
+	activityService := service.NewActivityService(activityRepo, workspaceRepo, auditRepo)
+	portfolioService := service.NewPortfolioService(portfolioRepo, workspaceRepo, auditRepo)
 
 	// Initialize handlers
 	contactHandler := handler.NewContactHandler(contactService)
 	taskHandler := handler.NewTaskHandler(taskService)
 	companyHandler := handler.NewCompanyHandler(companyService)
 	pipelineHandler := handler.NewPipelineHandler(pipelineService)
+	dealHandler := handler.NewDealHandler(dealService)
+	activityHandler := handler.NewActivityHandler(activityService)
+	portfolioHandler := handler.NewPortfolioHandler(portfolioService)
 
 	// Initialize rate limiter
 	rateLimiter := ratelimit.NewRedisRateLimiter(redisClient, metrics.RateLimitRejections)
@@ -279,6 +288,45 @@ func runServe(cmd *cobra.Command, args []string) error {
 						r.Delete("/", pipelineHandler.DeleteStage)
 					})
 				})
+			})
+		})
+
+		// Deals endpoints (NEW)
+		r.Route("/deals", func(r chi.Router) {
+			r.Get("/", dealHandler.ListDeals)
+			r.With(middleware.IdempotencyMiddleware(idempotencyRepo)).Post("/", dealHandler.CreateDeal)
+
+			r.Route("/{dealId}", func(r chi.Router) {
+				r.Get("/", dealHandler.GetDeal)
+				r.With(middleware.IdempotencyMiddleware(idempotencyRepo)).Patch("/", dealHandler.UpdateDeal)
+
+				// Stage update (action)
+				r.With(middleware.IdempotencyMiddleware(idempotencyRepo)).Post("/:move", dealHandler.UpdateDealStage)
+			})
+		})
+
+		// Timeline / Activities endpoints (NEW)
+		r.Route("/timeline", func(r chi.Router) {
+			r.Get("/", activityHandler.ListTimeline)
+
+			r.Route("/notes", func(r chi.Router) {
+				r.With(middleware.IdempotencyMiddleware(idempotencyRepo)).Post("/", activityHandler.CreateNote)
+			})
+
+			r.Route("/calls", func(r chi.Router) {
+				r.With(middleware.IdempotencyMiddleware(idempotencyRepo)).Post("/", activityHandler.CreateCall)
+			})
+		})
+
+		// Portfolio endpoints (NEW)
+		r.Route("/portfolio", func(r chi.Router) {
+			r.Get("/", portfolioHandler.ListPortfolioItems)
+			r.With(middleware.IdempotencyMiddleware(idempotencyRepo)).Post("/", portfolioHandler.CreatePortfolioItem)
+
+			r.Route("/{itemID}", func(r chi.Router) {
+				r.Get("/", portfolioHandler.GetPortfolioItem)
+				r.With(middleware.IdempotencyMiddleware(idempotencyRepo)).Patch("/", portfolioHandler.UpdatePortfolioItem)
+				r.Delete("/", portfolioHandler.DeletePortfolioItem)
 			})
 		})
 	})

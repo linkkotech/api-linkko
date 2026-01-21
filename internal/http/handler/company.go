@@ -13,7 +13,6 @@ import (
 	"linkko-api/internal/service"
 
 	"github.com/go-chi/chi/v5"
-	"github.com/google/uuid"
 	"go.uber.org/zap"
 )
 
@@ -30,10 +29,9 @@ func (h *CompanyHandler) ListCompanies(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 	log := logger.GetLogger(ctx)
 
-	workspaceIDStr := chi.URLParam(r, "workspaceId")
-	workspaceID, err := uuid.Parse(workspaceIDStr)
-	if err != nil {
-		writeError(w, ctx, log, http.StatusBadRequest, "INVALID_WORKSPACE_ID", "workspaceId must be a valid UUID")
+	workspaceID := chi.URLParam(r, "workspaceId")
+	if workspaceID == "" {
+		writeError(w, ctx, log, http.StatusBadRequest, "INVALID_WORKSPACE_ID", "workspaceId is required")
 		return
 	}
 
@@ -43,10 +41,9 @@ func (h *CompanyHandler) ListCompanies(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	actorID, err := uuid.Parse(claims.ActorID)
-	if err != nil {
-		log.Error(ctx, "invalid actorID in claims", zap.String("actorId", claims.ActorID), zap.Error(err))
-		writeError(w, ctx, log, http.StatusInternalServerError, "INTERNAL_ERROR", "invalid authentication claims")
+	actorID := claims.ActorID
+	if actorID == "" {
+		writeError(w, ctx, log, http.StatusUnauthorized, "UNAUTHORIZED", "actorID not found in claims")
 		return
 	}
 
@@ -90,19 +87,14 @@ func (h *CompanyHandler) ListCompanies(w http.ResponseWriter, r *http.Request) {
 			writeError(w, ctx, log, http.StatusBadRequest, "INVALID_COMPANY_SIZE", "invalid companySize value")
 			return
 		}
-		params.CompanySize = &companySize
+		params.Size = &companySize
 	}
 
 	if industry := r.URL.Query().Get("industry"); industry != "" {
 		params.Industry = &industry
 	}
 
-	if ownerIDStr := r.URL.Query().Get("ownerId"); ownerIDStr != "" {
-		ownerID, err := uuid.Parse(ownerIDStr)
-		if err != nil {
-			writeError(w, ctx, log, http.StatusBadRequest, "INVALID_OWNER_ID", "ownerId must be a valid UUID")
-			return
-		}
+	if ownerID := r.URL.Query().Get("ownerId"); ownerID != "" {
 		params.OwnerID = &ownerID
 	}
 
@@ -111,8 +103,8 @@ func (h *CompanyHandler) ListCompanies(w http.ResponseWriter, r *http.Request) {
 	}
 
 	log.Info(ctx, "listing companies",
-		zap.String("workspaceId", workspaceID.String()),
-		zap.String("actorId", actorID.String()),
+		zap.String("workspaceId", workspaceID),
+		zap.String("actorId", actorID),
 		zap.Int("limit", params.Limit),
 	)
 
@@ -123,7 +115,7 @@ func (h *CompanyHandler) ListCompanies(w http.ResponseWriter, r *http.Request) {
 	}
 
 	log.Info(ctx, "companies listed successfully",
-		zap.String("workspaceId", workspaceID.String()),
+		zap.String("workspaceId", workspaceID),
 		zap.Int("count", len(response.Data)),
 		zap.Bool("hasNextPage", response.Meta.HasNextPage),
 	)
@@ -136,17 +128,10 @@ func (h *CompanyHandler) GetCompany(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 	log := logger.GetLogger(ctx)
 
-	workspaceIDStr := chi.URLParam(r, "workspaceId")
-	workspaceID, err := uuid.Parse(workspaceIDStr)
-	if err != nil {
-		writeError(w, ctx, log, http.StatusBadRequest, "INVALID_WORKSPACE_ID", "workspaceId must be a valid UUID")
-		return
-	}
-
-	companyIDStr := chi.URLParam(r, "companyId")
-	companyID, err := uuid.Parse(companyIDStr)
-	if err != nil {
-		writeError(w, ctx, log, http.StatusBadRequest, "INVALID_COMPANY_ID", "companyId must be a valid UUID")
+	workspaceID := chi.URLParam(r, "workspaceId")
+	companyID := chi.URLParam(r, "companyId")
+	if workspaceID == "" || companyID == "" {
+		writeError(w, ctx, log, http.StatusBadRequest, "INVALID_ID", "workspaceId and companyId are required")
 		return
 	}
 
@@ -156,17 +141,12 @@ func (h *CompanyHandler) GetCompany(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	actorID, err := uuid.Parse(claims.ActorID)
-	if err != nil {
-		log.Error(ctx, "invalid actorID in claims", zap.String("actorId", claims.ActorID), zap.Error(err))
-		writeError(w, ctx, log, http.StatusInternalServerError, "INTERNAL_ERROR", "invalid authentication claims")
-		return
-	}
+	actorID := claims.ActorID
 
 	log.Info(ctx, "fetching company",
-		zap.String("workspaceId", workspaceID.String()),
-		zap.String("companyId", companyID.String()),
-		zap.String("actorId", actorID.String()),
+		zap.String("workspaceId", workspaceID),
+		zap.String("companyId", companyID),
+		zap.String("actorId", actorID),
 	)
 
 	company, err := h.service.GetCompany(ctx, workspaceID, companyID, actorID)
@@ -176,7 +156,7 @@ func (h *CompanyHandler) GetCompany(w http.ResponseWriter, r *http.Request) {
 	}
 
 	log.Info(ctx, "company fetched successfully",
-		zap.String("companyId", company.ID.String()),
+		zap.String("companyId", company.ID),
 	)
 
 	writeJSON(w, http.StatusOK, company)
@@ -187,10 +167,9 @@ func (h *CompanyHandler) CreateCompany(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 	log := logger.GetLogger(ctx)
 
-	workspaceIDStr := chi.URLParam(r, "workspaceId")
-	workspaceID, err := uuid.Parse(workspaceIDStr)
-	if err != nil {
-		writeError(w, ctx, log, http.StatusBadRequest, "INVALID_WORKSPACE_ID", "workspaceId must be a valid UUID")
+	workspaceID := chi.URLParam(r, "workspaceId")
+	if workspaceID == "" {
+		writeError(w, ctx, log, http.StatusBadRequest, "INVALID_WORKSPACE_ID", "workspaceId is required")
 		return
 	}
 
@@ -200,10 +179,9 @@ func (h *CompanyHandler) CreateCompany(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	actorID, err := uuid.Parse(claims.ActorID)
-	if err != nil {
-		log.Error(ctx, "invalid actorID in claims", zap.String("actorId", claims.ActorID), zap.Error(err))
-		writeError(w, ctx, log, http.StatusInternalServerError, "INTERNAL_ERROR", "invalid authentication claims")
+	actorID := claims.ActorID
+	if actorID == "" {
+		writeError(w, ctx, log, http.StatusUnauthorized, "UNAUTHORIZED", "actorID not found in claims")
 		return
 	}
 
@@ -215,8 +193,8 @@ func (h *CompanyHandler) CreateCompany(w http.ResponseWriter, r *http.Request) {
 	}
 
 	log.Info(ctx, "creating company",
-		zap.String("workspaceId", workspaceID.String()),
-		zap.String("actorId", actorID.String()),
+		zap.String("workspaceId", workspaceID),
+		zap.String("actorId", actorID),
 		zap.String("name", req.Name),
 	)
 
@@ -227,7 +205,7 @@ func (h *CompanyHandler) CreateCompany(w http.ResponseWriter, r *http.Request) {
 	}
 
 	log.Info(ctx, "company created successfully",
-		zap.String("companyId", company.ID.String()),
+		zap.String("companyId", company.ID),
 	)
 
 	writeJSON(w, http.StatusCreated, company)
@@ -238,17 +216,10 @@ func (h *CompanyHandler) UpdateCompany(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 	log := logger.GetLogger(ctx)
 
-	workspaceIDStr := chi.URLParam(r, "workspaceId")
-	workspaceID, err := uuid.Parse(workspaceIDStr)
-	if err != nil {
-		writeError(w, ctx, log, http.StatusBadRequest, "INVALID_WORKSPACE_ID", "workspaceId must be a valid UUID")
-		return
-	}
-
-	companyIDStr := chi.URLParam(r, "companyId")
-	companyID, err := uuid.Parse(companyIDStr)
-	if err != nil {
-		writeError(w, ctx, log, http.StatusBadRequest, "INVALID_COMPANY_ID", "companyId must be a valid UUID")
+	workspaceID := chi.URLParam(r, "workspaceId")
+	companyID := chi.URLParam(r, "companyId")
+	if workspaceID == "" || companyID == "" {
+		writeError(w, ctx, log, http.StatusBadRequest, "INVALID_ID", "workspaceId and companyId are required")
 		return
 	}
 
@@ -258,10 +229,9 @@ func (h *CompanyHandler) UpdateCompany(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	actorID, err := uuid.Parse(claims.ActorID)
-	if err != nil {
-		log.Error(ctx, "invalid actorID in claims", zap.String("actorId", claims.ActorID), zap.Error(err))
-		writeError(w, ctx, log, http.StatusInternalServerError, "INTERNAL_ERROR", "invalid authentication claims")
+	actorID := claims.ActorID
+	if actorID == "" {
+		writeError(w, ctx, log, http.StatusUnauthorized, "UNAUTHORIZED", "actorID not found in claims")
 		return
 	}
 
@@ -273,9 +243,9 @@ func (h *CompanyHandler) UpdateCompany(w http.ResponseWriter, r *http.Request) {
 	}
 
 	log.Info(ctx, "updating company",
-		zap.String("workspaceId", workspaceID.String()),
-		zap.String("companyId", companyID.String()),
-		zap.String("actorId", actorID.String()),
+		zap.String("workspaceId", workspaceID),
+		zap.String("companyId", companyID),
+		zap.String("actorId", actorID),
 	)
 
 	company, err := h.service.UpdateCompany(ctx, workspaceID, companyID, actorID, &req)
@@ -285,7 +255,7 @@ func (h *CompanyHandler) UpdateCompany(w http.ResponseWriter, r *http.Request) {
 	}
 
 	log.Info(ctx, "company updated successfully",
-		zap.String("companyId", company.ID.String()),
+		zap.String("companyId", company.ID),
 	)
 
 	writeJSON(w, http.StatusOK, company)
@@ -296,17 +266,10 @@ func (h *CompanyHandler) DeleteCompany(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 	log := logger.GetLogger(ctx)
 
-	workspaceIDStr := chi.URLParam(r, "workspaceId")
-	workspaceID, err := uuid.Parse(workspaceIDStr)
-	if err != nil {
-		writeError(w, ctx, log, http.StatusBadRequest, "INVALID_WORKSPACE_ID", "workspaceId must be a valid UUID")
-		return
-	}
-
-	companyIDStr := chi.URLParam(r, "companyId")
-	companyID, err := uuid.Parse(companyIDStr)
-	if err != nil {
-		writeError(w, ctx, log, http.StatusBadRequest, "INVALID_COMPANY_ID", "companyId must be a valid UUID")
+	workspaceID := chi.URLParam(r, "workspaceId")
+	companyID := chi.URLParam(r, "companyId")
+	if workspaceID == "" || companyID == "" {
+		writeError(w, ctx, log, http.StatusBadRequest, "INVALID_ID", "workspaceId and companyId are required")
 		return
 	}
 
@@ -316,27 +279,26 @@ func (h *CompanyHandler) DeleteCompany(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	actorID, err := uuid.Parse(claims.ActorID)
-	if err != nil {
-		log.Error(ctx, "invalid actorID in claims", zap.String("actorId", claims.ActorID), zap.Error(err))
-		writeError(w, ctx, log, http.StatusInternalServerError, "INTERNAL_ERROR", "invalid authentication claims")
+	actorID := claims.ActorID
+	if actorID == "" {
+		writeError(w, ctx, log, http.StatusUnauthorized, "UNAUTHORIZED", "actorID not found in claims")
 		return
 	}
 
 	log.Info(ctx, "deleting company",
-		zap.String("workspaceId", workspaceID.String()),
-		zap.String("companyId", companyID.String()),
-		zap.String("actorId", actorID.String()),
+		zap.String("workspaceId", workspaceID),
+		zap.String("companyId", companyID),
+		zap.String("actorId", actorID),
 	)
 
-	err = h.service.DeleteCompany(ctx, workspaceID, companyID, actorID)
+	err := h.service.DeleteCompany(ctx, workspaceID, companyID, actorID)
 	if err != nil {
 		handleCompanyServiceError(w, ctx, log, err)
 		return
 	}
 
 	log.Info(ctx, "company deleted successfully",
-		zap.String("companyId", companyID.String()),
+		zap.String("companyId", companyID),
 	)
 
 	w.WriteHeader(http.StatusNoContent)

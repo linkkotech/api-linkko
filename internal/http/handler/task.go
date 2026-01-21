@@ -11,7 +11,6 @@ import (
 	"linkko-api/internal/service"
 
 	"github.com/go-chi/chi/v5"
-	"github.com/google/uuid"
 	"go.uber.org/zap"
 )
 
@@ -28,10 +27,9 @@ func (h *TaskHandler) ListTasks(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 	log := logger.GetLogger(ctx)
 
-	workspaceIDStr := chi.URLParam(r, "workspaceId")
-	workspaceID, err := uuid.Parse(workspaceIDStr)
-	if err != nil {
-		writeError(w, ctx, log, http.StatusBadRequest, "INVALID_WORKSPACE_ID", "workspaceId must be a valid UUID")
+	workspaceID := chi.URLParam(r, "workspaceId")
+	if workspaceID == "" {
+		writeError(w, ctx, log, http.StatusBadRequest, "INVALID_WORKSPACE_ID", "workspaceId is required")
 		return
 	}
 
@@ -41,10 +39,9 @@ func (h *TaskHandler) ListTasks(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	actorID, err := uuid.Parse(claims.ActorID)
-	if err != nil {
-		log.Error(ctx, "invalid actorID in claims", zap.String("actorId", claims.ActorID), zap.Error(err))
-		writeError(w, ctx, log, http.StatusInternalServerError, "INTERNAL_ERROR", "invalid authentication claims")
+	actorID := claims.ActorID
+	if actorID == "" {
+		writeError(w, ctx, log, http.StatusUnauthorized, "UNAUTHORIZED", "actorID not found in claims")
 		return
 	}
 
@@ -93,30 +90,15 @@ func (h *TaskHandler) ListTasks(w http.ResponseWriter, r *http.Request) {
 		params.Type = &taskType
 	}
 
-	if assignedToStr := r.URL.Query().Get("assignedTo"); assignedToStr != "" {
-		assignedToID, err := uuid.Parse(assignedToStr)
-		if err != nil {
-			writeError(w, ctx, log, http.StatusBadRequest, "INVALID_ASSIGNED_TO", "assignedTo must be a valid UUID")
-			return
-		}
+	if assignedToID := r.URL.Query().Get("assignedTo"); assignedToID != "" {
 		params.AssignedTo = &assignedToID
 	}
 
-	if actorIDStr := r.URL.Query().Get("actorId"); actorIDStr != "" {
-		actorFilterID, err := uuid.Parse(actorIDStr)
-		if err != nil {
-			writeError(w, ctx, log, http.StatusBadRequest, "INVALID_ACTOR_ID", "actorId must be a valid UUID")
-			return
-		}
+	if actorFilterID := r.URL.Query().Get("actorId"); actorFilterID != "" {
 		params.ActorID = &actorFilterID
 	}
 
-	if contactIDStr := r.URL.Query().Get("contactId"); contactIDStr != "" {
-		contactID, err := uuid.Parse(contactIDStr)
-		if err != nil {
-			writeError(w, ctx, log, http.StatusBadRequest, "INVALID_CONTACT_ID", "contactId must be a valid UUID")
-			return
-		}
+	if contactID := r.URL.Query().Get("contactId"); contactID != "" {
 		params.ContactID = &contactID
 	}
 
@@ -125,8 +107,8 @@ func (h *TaskHandler) ListTasks(w http.ResponseWriter, r *http.Request) {
 	}
 
 	log.Info(ctx, "listing tasks",
-		zap.String("workspaceId", workspaceID.String()),
-		zap.String("actorId", actorID.String()),
+		zap.String("workspaceId", workspaceID),
+		zap.String("actorId", actorID),
 		zap.Int("limit", params.Limit),
 	)
 
@@ -144,17 +126,10 @@ func (h *TaskHandler) GetTask(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 	log := logger.GetLogger(ctx)
 
-	workspaceIDStr := chi.URLParam(r, "workspaceId")
-	workspaceID, err := uuid.Parse(workspaceIDStr)
-	if err != nil {
-		writeError(w, ctx, log, http.StatusBadRequest, "INVALID_WORKSPACE_ID", "workspaceId must be a valid UUID")
-		return
-	}
-
-	taskIDStr := chi.URLParam(r, "taskId")
-	taskID, err := uuid.Parse(taskIDStr)
-	if err != nil {
-		writeError(w, ctx, log, http.StatusBadRequest, "INVALID_TASK_ID", "taskId must be a valid UUID")
+	workspaceID := chi.URLParam(r, "workspaceId")
+	taskID := chi.URLParam(r, "taskId")
+	if workspaceID == "" || taskID == "" {
+		writeError(w, ctx, log, http.StatusBadRequest, "INVALID_ID", "workspaceId and taskId are required")
 		return
 	}
 
@@ -164,17 +139,16 @@ func (h *TaskHandler) GetTask(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	actorID, err := uuid.Parse(claims.ActorID)
-	if err != nil {
-		log.Error(ctx, "invalid actorID in claims", zap.String("actorId", claims.ActorID), zap.Error(err))
-		writeError(w, ctx, log, http.StatusInternalServerError, "INTERNAL_ERROR", "invalid authentication claims")
+	actorID := claims.ActorID
+	if actorID == "" {
+		writeError(w, ctx, log, http.StatusUnauthorized, "UNAUTHORIZED", "actorID not found in claims")
 		return
 	}
 
 	log.Info(ctx, "getting task",
-		zap.String("workspaceId", workspaceID.String()),
-		zap.String("taskId", taskID.String()),
-		zap.String("actorId", actorID.String()),
+		zap.String("workspaceId", workspaceID),
+		zap.String("taskId", taskID),
+		zap.String("actorId", actorID),
 	)
 
 	task, err := h.service.GetTask(ctx, workspaceID, taskID, actorID)
@@ -191,10 +165,9 @@ func (h *TaskHandler) CreateTask(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 	log := logger.GetLogger(ctx)
 
-	workspaceIDStr := chi.URLParam(r, "workspaceId")
-	workspaceID, err := uuid.Parse(workspaceIDStr)
-	if err != nil {
-		writeError(w, ctx, log, http.StatusBadRequest, "INVALID_WORKSPACE_ID", "workspaceId must be a valid UUID")
+	workspaceID := chi.URLParam(r, "workspaceId")
+	if workspaceID == "" {
+		writeError(w, ctx, log, http.StatusBadRequest, "INVALID_WORKSPACE_ID", "workspaceId is required")
 		return
 	}
 
@@ -204,10 +177,9 @@ func (h *TaskHandler) CreateTask(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	actorID, err := uuid.Parse(claims.ActorID)
-	if err != nil {
-		log.Error(ctx, "invalid actorID in claims", zap.String("actorId", claims.ActorID), zap.Error(err))
-		writeError(w, ctx, log, http.StatusInternalServerError, "INTERNAL_ERROR", "invalid authentication claims")
+	actorID := claims.ActorID
+	if actorID == "" {
+		writeError(w, ctx, log, http.StatusUnauthorized, "UNAUTHORIZED", "actorID not found in claims")
 		return
 	}
 
@@ -218,8 +190,8 @@ func (h *TaskHandler) CreateTask(w http.ResponseWriter, r *http.Request) {
 	}
 
 	log.Info(ctx, "creating task",
-		zap.String("workspaceId", workspaceID.String()),
-		zap.String("actorId", actorID.String()),
+		zap.String("workspaceId", workspaceID),
+		zap.String("actorId", actorID),
 		zap.String("title", req.Title),
 	)
 
@@ -237,17 +209,10 @@ func (h *TaskHandler) UpdateTask(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 	log := logger.GetLogger(ctx)
 
-	workspaceIDStr := chi.URLParam(r, "workspaceId")
-	workspaceID, err := uuid.Parse(workspaceIDStr)
-	if err != nil {
-		writeError(w, ctx, log, http.StatusBadRequest, "INVALID_WORKSPACE_ID", "workspaceId must be a valid UUID")
-		return
-	}
-
-	taskIDStr := chi.URLParam(r, "taskId")
-	taskID, err := uuid.Parse(taskIDStr)
-	if err != nil {
-		writeError(w, ctx, log, http.StatusBadRequest, "INVALID_TASK_ID", "taskId must be a valid UUID")
+	workspaceID := chi.URLParam(r, "workspaceId")
+	taskID := chi.URLParam(r, "taskId")
+	if workspaceID == "" || taskID == "" {
+		writeError(w, ctx, log, http.StatusBadRequest, "INVALID_ID", "workspaceId and taskId are required")
 		return
 	}
 
@@ -257,10 +222,9 @@ func (h *TaskHandler) UpdateTask(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	actorID, err := uuid.Parse(claims.ActorID)
-	if err != nil {
-		log.Error(ctx, "invalid actorID in claims", zap.String("actorId", claims.ActorID), zap.Error(err))
-		writeError(w, ctx, log, http.StatusInternalServerError, "INTERNAL_ERROR", "invalid authentication claims")
+	actorID := claims.ActorID
+	if actorID == "" {
+		writeError(w, ctx, log, http.StatusUnauthorized, "UNAUTHORIZED", "actorID not found in claims")
 		return
 	}
 
@@ -271,9 +235,9 @@ func (h *TaskHandler) UpdateTask(w http.ResponseWriter, r *http.Request) {
 	}
 
 	log.Info(ctx, "updating task",
-		zap.String("workspaceId", workspaceID.String()),
-		zap.String("taskId", taskID.String()),
-		zap.String("actorId", actorID.String()),
+		zap.String("workspaceId", workspaceID),
+		zap.String("taskId", taskID),
+		zap.String("actorId", actorID),
 	)
 
 	task, err := h.service.UpdateTask(ctx, workspaceID, taskID, actorID, &req)
@@ -290,17 +254,10 @@ func (h *TaskHandler) DeleteTask(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 	log := logger.GetLogger(ctx)
 
-	workspaceIDStr := chi.URLParam(r, "workspaceId")
-	workspaceID, err := uuid.Parse(workspaceIDStr)
-	if err != nil {
-		writeError(w, ctx, log, http.StatusBadRequest, "INVALID_WORKSPACE_ID", "workspaceId must be a valid UUID")
-		return
-	}
-
-	taskIDStr := chi.URLParam(r, "taskId")
-	taskID, err := uuid.Parse(taskIDStr)
-	if err != nil {
-		writeError(w, ctx, log, http.StatusBadRequest, "INVALID_TASK_ID", "taskId must be a valid UUID")
+	workspaceID := chi.URLParam(r, "workspaceId")
+	taskID := chi.URLParam(r, "taskId")
+	if workspaceID == "" || taskID == "" {
+		writeError(w, ctx, log, http.StatusBadRequest, "INVALID_ID", "workspaceId and taskId are required")
 		return
 	}
 
@@ -310,20 +267,19 @@ func (h *TaskHandler) DeleteTask(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	actorID, err := uuid.Parse(claims.ActorID)
-	if err != nil {
-		log.Error(ctx, "invalid actorID in claims", zap.String("actorId", claims.ActorID), zap.Error(err))
-		writeError(w, ctx, log, http.StatusInternalServerError, "INTERNAL_ERROR", "invalid authentication claims")
+	actorID := claims.ActorID
+	if actorID == "" {
+		writeError(w, ctx, log, http.StatusUnauthorized, "UNAUTHORIZED", "actorID not found in claims")
 		return
 	}
 
 	log.Info(ctx, "deleting task",
-		zap.String("workspaceId", workspaceID.String()),
-		zap.String("taskId", taskID.String()),
-		zap.String("actorId", actorID.String()),
+		zap.String("workspaceId", workspaceID),
+		zap.String("taskId", taskID),
+		zap.String("actorId", actorID),
 	)
 
-	err = h.service.DeleteTask(ctx, workspaceID, taskID, actorID)
+	err := h.service.DeleteTask(ctx, workspaceID, taskID, actorID)
 	if err != nil {
 		handleServiceError(w, ctx, log, err)
 		return
@@ -338,17 +294,10 @@ func (h *TaskHandler) MoveTask(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 	log := logger.GetLogger(ctx)
 
-	workspaceIDStr := chi.URLParam(r, "workspaceId")
-	workspaceID, err := uuid.Parse(workspaceIDStr)
-	if err != nil {
-		writeError(w, ctx, log, http.StatusBadRequest, "INVALID_WORKSPACE_ID", "workspaceId must be a valid UUID")
-		return
-	}
-
-	taskIDStr := chi.URLParam(r, "taskId")
-	taskID, err := uuid.Parse(taskIDStr)
-	if err != nil {
-		writeError(w, ctx, log, http.StatusBadRequest, "INVALID_TASK_ID", "taskId must be a valid UUID")
+	workspaceID := chi.URLParam(r, "workspaceId")
+	taskID := chi.URLParam(r, "taskId")
+	if workspaceID == "" || taskID == "" {
+		writeError(w, ctx, log, http.StatusBadRequest, "INVALID_ID", "workspaceId and taskId are required")
 		return
 	}
 
@@ -358,10 +307,9 @@ func (h *TaskHandler) MoveTask(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	actorID, err := uuid.Parse(claims.ActorID)
-	if err != nil {
-		log.Error(ctx, "invalid actorID in claims", zap.String("actorId", claims.ActorID), zap.Error(err))
-		writeError(w, ctx, log, http.StatusInternalServerError, "INTERNAL_ERROR", "invalid authentication claims")
+	actorID := claims.ActorID
+	if actorID == "" {
+		writeError(w, ctx, log, http.StatusUnauthorized, "UNAUTHORIZED", "actorID not found in claims")
 		return
 	}
 
@@ -378,9 +326,9 @@ func (h *TaskHandler) MoveTask(w http.ResponseWriter, r *http.Request) {
 	}
 
 	log.Info(ctx, "moving task",
-		zap.String("workspaceId", workspaceID.String()),
-		zap.String("taskId", taskID.String()),
-		zap.String("actorId", actorID.String()),
+		zap.String("workspaceId", workspaceID),
+		zap.String("taskId", taskID),
+		zap.String("actorId", actorID),
 		zap.String("toStatus", string(req.ToStatus)),
 	)
 

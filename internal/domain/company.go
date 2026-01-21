@@ -128,6 +128,7 @@ type Company struct {
 	Industry       *string               `json:"industry,omitempty" db:"industry"`
 	LifecycleStage CompanyLifecycleStage `json:"lifecycleStage" db:"lifecycleStage"`
 	Size           CompanySize           `json:"size" db:"size"` // Campo é "size" no schema real
+	CompanySize    CompanySize           `json:"companySize" db:"size"`
 
 	// Contato
 	Phone   *string `json:"phone,omitempty" db:"phone"`
@@ -138,7 +139,7 @@ type Company struct {
 	Address map[string]interface{} `json:"address,omitempty" db:"address"`
 
 	// Métricas de negócio - revenue no schema real
-	Revenue       *float64 `json:"revenue,omitempty" db:"revenue"`
+	AnnualRevenue *float64 `json:"annualRevenue,omitempty" db:"revenue"`
 	EmployeeCount *int     `json:"employeeCount,omitempty" db:"employeeCount"`
 
 	// Ownership - assignedToId no schema real
@@ -167,7 +168,7 @@ type CreateCompanyRequest struct {
 
 	// Classificação
 	LifecycleStage *CompanyLifecycleStage `json:"lifecycleStage,omitempty" validate:"omitempty,oneof=LEAD MQL SQL CUSTOMER CHURNED"`
-	Size           *CompanySize           `json:"size,omitempty" validate:"omitempty,oneof=STARTUP SMB MID_MARKET ENTERPRISE"`
+	CompanySize    *CompanySize           `json:"companySize,omitempty" validate:"omitempty,oneof=STARTUP SMB MID_MARKET ENTERPRISE"`
 
 	// Contato
 	Phone   *string `json:"phone,omitempty" validate:"omitempty,max=50"`
@@ -178,7 +179,7 @@ type CreateCompanyRequest struct {
 	Address map[string]interface{} `json:"address,omitempty"`
 
 	// Métricas - revenue no schema real
-	Revenue       *float64 `json:"revenue,omitempty" validate:"omitempty,gte=0"`
+	AnnualRevenue *float64 `json:"annualRevenue,omitempty" validate:"omitempty,gte=0"`
 	EmployeeCount *int     `json:"employeeCount,omitempty" validate:"omitempty,gte=1"`
 
 	// Ownership (opcional - default JWT claims) - ID é TEXT
@@ -200,7 +201,7 @@ type UpdateCompanyRequest struct {
 	// Classificação
 	Industry       *string                `json:"industry,omitempty" validate:"omitempty,max=100"`
 	LifecycleStage *CompanyLifecycleStage `json:"lifecycleStage,omitempty" validate:"omitempty,oneof=LEAD MQL SQL CUSTOMER CHURNED"`
-	Size           *CompanySize           `json:"size,omitempty" validate:"omitempty,oneof=STARTUP SMB MID_MARKET ENTERPRISE"`
+	CompanySize    *CompanySize           `json:"companySize,omitempty" validate:"omitempty,oneof=STARTUP SMB MID_MARKET ENTERPRISE"`
 
 	// Contato
 	Phone   *string `json:"phone,omitempty" validate:"omitempty,max=50"`
@@ -211,7 +212,7 @@ type UpdateCompanyRequest struct {
 	Address map[string]interface{} `json:"address,omitempty"`
 
 	// Métricas - revenue no schema real
-	Revenue       *float64 `json:"revenue,omitempty" validate:"omitempty,gte=0"`
+	AnnualRevenue *float64 `json:"annualRevenue,omitempty" validate:"omitempty,gte=0"`
 	EmployeeCount *int     `json:"employeeCount,omitempty" validate:"omitempty,gte=1"`
 
 	// Ownership - ID é TEXT

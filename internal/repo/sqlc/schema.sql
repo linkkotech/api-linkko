@@ -35,6 +35,20 @@ CREATE TYPE "Priority" AS ENUM ('LOW', 'MEDIUM', 'HIGH', 'URGENT');
 -- Tags
 CREATE TYPE "TagCategory" AS ENUM ('PRIORITY', 'STATUS', 'TEMPERATURE', 'TYPE', 'QUALIFICATION');
 
+-- Activities & Communication
+CREATE TYPE "ActivityType" AS ENUM ('NOTE', 'TASK', 'EMAIL', 'CALL', 'MEETING', 'MESSAGE', 'LIFECYCLE_CHANGE');
+CREATE TYPE "MessageDirection" AS ENUM ('INBOUND', 'OUTBOUND');
+CREATE TYPE "MessageStatus" AS ENUM ('SENT', 'DELIVERED', 'READ', 'FAILED');
+CREATE TYPE "EmailStatus" AS ENUM ('DRAFT', 'SENT', 'DELIVERED', 'OPENED', 'CLICKED', 'BOUNCED');
+CREATE TYPE "MeetingType" AS ENUM ('CALL', 'VIDEO', 'IN_PERSON');
+CREATE TYPE "AttendeeStatus" AS ENUM ('INVITED', 'ACCEPTED', 'DECLINED', 'TENTATIVE', 'ATTENDED', 'NO_SHOW');
+
+-- Portfolio & Commerce
+CREATE TYPE "PortfolioCategoryEnum" AS ENUM ('PRODUCT', 'SERVICE', 'REAL_ESTATE', 'LODGING', 'EVENT');
+CREATE TYPE "PortfolioVertical" AS ENUM ('GENERAL', 'HEALTHCARE', 'AESTHETICS', 'BEAUTY', 'RETAIL', 'REAL_ESTATE', 'HOSTING', 'EVENTS', 'GENERAL_LOCAL', 'B2B_CORPORATE');
+CREATE TYPE "PortfolioStatus" AS ENUM ('DRAFT', 'ACTIVE', 'INACTIVE', 'UNAVAILABLE', 'ARCHIVED');
+CREATE TYPE "PortfolioVisibility" AS ENUM ('PUBLIC', 'INTERNAL');
+
 -- =====================================================
 -- TABELAS PRINCIPAIS
 -- =====================================================
@@ -366,6 +380,164 @@ CREATE TABLE "DealTag" (
 );
 
 -- -----------------------------------------------------
+-- ACTIVITIES (TIMELINE)
+-- -----------------------------------------------------
+
+CREATE TABLE "Activity" (
+    "id" TEXT NOT NULL,
+    "workspaceId" TEXT NOT NULL,
+    "companyId" TEXT,
+    "contactId" TEXT,
+    "dealId" TEXT,
+    "activityType" "ActivityType" NOT NULL,
+    "activityId" TEXT,
+    "userId" TEXT NOT NULL,
+    "metadata" JSONB,
+    "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+
+    CONSTRAINT "Activity_pkey" PRIMARY KEY ("id")
+);
+
+-- -----------------------------------------------------
+-- NOTES
+-- -----------------------------------------------------
+
+CREATE TABLE "Note" (
+    "id" TEXT NOT NULL,
+    "workspaceId" TEXT NOT NULL,
+    "companyId" TEXT,
+    "contactId" TEXT,
+    "dealId" TEXT,
+    "content" TEXT NOT NULL,
+    "isPinned" BOOLEAN NOT NULL DEFAULT false,
+    "userId" TEXT NOT NULL,
+    "deletedAt" TIMESTAMP(3),
+    "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "updatedAt" TIMESTAMP(3) NOT NULL,
+
+    CONSTRAINT "Note_pkey" PRIMARY KEY ("id")
+);
+
+-- -----------------------------------------------------
+-- MESSAGES
+-- -----------------------------------------------------
+
+CREATE TABLE "Message" (
+    "id" TEXT NOT NULL,
+    "workspaceId" TEXT NOT NULL,
+    "contactId" TEXT NOT NULL,
+    "companyId" TEXT,
+    "direction" "MessageDirection" NOT NULL,
+    "platform" TEXT NOT NULL,
+    "content" TEXT NOT NULL,
+    "status" "MessageStatus" NOT NULL,
+    "sentAt" TIMESTAMP(3) NOT NULL,
+    "userId" TEXT NOT NULL,
+    "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+
+    CONSTRAINT "Message_pkey" PRIMARY KEY ("id")
+);
+
+-- -----------------------------------------------------
+-- EMAILS
+-- -----------------------------------------------------
+
+CREATE TABLE "Email" (
+    "id" TEXT NOT NULL,
+    "workspaceId" TEXT NOT NULL,
+    "contactId" TEXT NOT NULL,
+    "companyId" TEXT,
+    "subject" TEXT NOT NULL,
+    "body" TEXT NOT NULL,
+    "fromEmail" TEXT NOT NULL,
+    "toEmail" TEXT NOT NULL,
+    "ccEmails" TEXT[],
+    "bccEmails" TEXT[],
+    "status" "EmailStatus" NOT NULL DEFAULT 'DRAFT',
+    "sentAt" TIMESTAMP(3),
+    "openedAt" TIMESTAMP(3),
+    "clickedAt" TIMESTAMP(3),
+    "userId" TEXT NOT NULL,
+    "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+
+    CONSTRAINT "Email_pkey" PRIMARY KEY ("id")
+);
+
+-- -----------------------------------------------------
+-- CALLS
+-- -----------------------------------------------------
+
+CREATE TABLE "Call" (
+    "id" TEXT NOT NULL,
+    "workspaceId" TEXT NOT NULL,
+    "contactId" TEXT NOT NULL,
+    "companyId" TEXT,
+    "direction" "MessageDirection" NOT NULL,
+    "duration" INTEGER,
+    "recordingUrl" TEXT,
+    "summary" TEXT,
+    "userId" TEXT NOT NULL,
+    "calledAt" TIMESTAMP(3) NOT NULL,
+    "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+
+    CONSTRAINT "Call_pkey" PRIMARY KEY ("id")
+);
+
+-- -----------------------------------------------------
+-- MEETINGS
+-- -----------------------------------------------------
+
+CREATE TABLE "Meeting" (
+    "id" TEXT NOT NULL,
+    "workspaceId" TEXT NOT NULL,
+    "title" TEXT NOT NULL,
+    "description" TEXT,
+    "meetingType" "MeetingType" NOT NULL,
+    "startTime" TIMESTAMP(3) NOT NULL,
+    "endTime" TIMESTAMP(3) NOT NULL,
+    "location" TEXT,
+    "meetingUrl" TEXT,
+    "externalId" TEXT,
+    "userId" TEXT NOT NULL,
+    "deletedAt" TIMESTAMP(3),
+    "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "updatedAt" TIMESTAMP(3) NOT NULL,
+
+    CONSTRAINT "Meeting_pkey" PRIMARY KEY ("id")
+);
+
+CREATE TABLE "MeetingAttendee" (
+    "id" TEXT NOT NULL,
+    "meetingId" TEXT NOT NULL,
+    "contactId" TEXT,
+    "email" TEXT NOT NULL,
+    "name" TEXT,
+    "status" "AttendeeStatus" NOT NULL DEFAULT 'INVITED',
+    "respondedAt" TIMESTAMP(3),
+    "externalAttendeeId" TEXT,
+    "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+
+    CONSTRAINT "MeetingAttendee_pkey" PRIMARY KEY ("id")
+);
+
+-- -----------------------------------------------------
+-- DEAL STAGE HISTORY
+-- -----------------------------------------------------
+
+CREATE TABLE "DealStageHistory" (
+    "id" TEXT NOT NULL,
+    "workspaceId" TEXT NOT NULL,
+    "dealId" TEXT NOT NULL,
+    "fromStage" "DealStage" NOT NULL,
+    "toStage" "DealStage" NOT NULL,
+    "reason" TEXT,
+    "userId" TEXT NOT NULL,
+    "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+
+    CONSTRAINT "DealStageHistory_pkey" PRIMARY KEY ("id")
+);
+
+-- -----------------------------------------------------
 -- IDEMPOTENCY & AUDIT
 -- -----------------------------------------------------
 
@@ -393,6 +565,40 @@ CREATE TABLE "audit_log" (
     "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
 
     CONSTRAINT "audit_log_pkey" PRIMARY KEY ("id")
+);
+
+-- -----------------------------------------------------
+-- COMMERCE: PORTFOLIO & CATALOG
+-- -----------------------------------------------------
+
+CREATE TABLE "PortfolioItem" (
+    "id" TEXT NOT NULL,
+    "workspaceId" TEXT NOT NULL,
+    "name" TEXT NOT NULL,
+    "description" TEXT,
+    "sku" TEXT,
+    "category" "PortfolioCategoryEnum" NOT NULL DEFAULT 'SERVICE',
+    "vertical" "PortfolioVertical" NOT NULL DEFAULT 'GENERAL',
+    "status" "PortfolioStatus" NOT NULL DEFAULT 'ACTIVE',
+    "visibility" "PortfolioVisibility" NOT NULL DEFAULT 'PUBLIC',
+    
+    -- Pricing
+    "basePrice" DOUBLE PRECISION NOT NULL DEFAULT 0,
+    "currency" TEXT NOT NULL DEFAULT 'BRL',
+    
+    -- Metadata & Media
+    "imageUrl" TEXT,
+    "metadata" JSONB,
+    "tags" TEXT[],
+    
+    -- Control
+    "createdById" TEXT NOT NULL,
+    "updatedById" TEXT,
+    "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "updatedAt" TIMESTAMP(3) NOT NULL,
+    "deletedAt" TIMESTAMP(3),
+
+    CONSTRAINT "PortfolioItem_pkey" PRIMARY KEY ("id")
 );
 
 -- =====================================================
@@ -481,6 +687,51 @@ CREATE INDEX "audit_log_userId_idx" ON "audit_log"("userId");
 CREATE INDEX "audit_log_entityType_entityId_idx" ON "audit_log"("entityType", "entityId");
 CREATE INDEX "audit_log_createdAt_idx" ON "audit_log"("createdAt" DESC);
 
+-- PortfolioItem
+CREATE INDEX "PortfolioItem_workspaceId_idx" ON "PortfolioItem"("workspaceId");
+CREATE INDEX "PortfolioItem_status_idx" ON "PortfolioItem"("status");
+CREATE INDEX "PortfolioItem_category_idx" ON "PortfolioItem"("category");
+CREATE INDEX "PortfolioItem_deletedAt_idx" ON "PortfolioItem"("deletedAt");
+
+-- Activity
+CREATE INDEX "Activity_contactId_createdAt_idx" ON "Activity"("contactId", "createdAt" DESC);
+CREATE INDEX "Activity_companyId_activityType_idx" ON "Activity"("companyId", "activityType");
+CREATE INDEX "Activity_dealId_createdAt_idx" ON "Activity"("dealId", "createdAt" DESC);
+CREATE INDEX "Activity_workspaceId_activityType_idx" ON "Activity"("workspaceId", "activityType");
+CREATE INDEX "Activity_userId_idx" ON "Activity"("userId");
+
+-- Note
+CREATE INDEX "Note_workspaceId_idx" ON "Note"("workspaceId");
+CREATE INDEX "Note_contactId_idx" ON "Note"("contactId");
+CREATE INDEX "Note_companyId_idx" ON "Note"("companyId");
+CREATE INDEX "Note_dealId_idx" ON "Note"("dealId");
+
+-- Message
+CREATE INDEX "Message_workspaceId_idx" ON "Message"("workspaceId");
+CREATE INDEX "Message_contactId_idx" ON "Message"("contactId");
+CREATE INDEX "Message_sentAt_idx" ON "Message"("sentAt" DESC);
+
+-- Email
+CREATE INDEX "Email_workspaceId_idx" ON "Email"("workspaceId");
+CREATE INDEX "Email_contactId_idx" ON "Email"("contactId");
+CREATE INDEX "Email_sentAt_idx" ON "Email"("sentAt" DESC);
+
+-- Call
+CREATE INDEX "Call_workspaceId_idx" ON "Call"("workspaceId");
+CREATE INDEX "Call_contactId_idx" ON "Call"("contactId");
+CREATE INDEX "Call_calledAt_idx" ON "Call"("calledAt" DESC);
+
+-- Meeting
+CREATE INDEX "Meeting_workspaceId_idx" ON "Meeting"("workspaceId");
+CREATE INDEX "Meeting_startTime_idx" ON "Meeting"("startTime");
+
+-- MeetingAttendee
+CREATE INDEX "MeetingAttendee_meetingId_idx" ON "MeetingAttendee"("meetingId");
+CREATE INDEX "MeetingAttendee_contactId_idx" ON "MeetingAttendee"("contactId");
+
+-- DealStageHistory
+CREATE INDEX "DealStageHistory_dealId_createdAt_idx" ON "DealStageHistory"("dealId", "createdAt" DESC);
+
 -- =====================================================
 -- FOREIGN KEYS (Principais Constraints)
 -- =====================================================
@@ -567,6 +818,52 @@ ALTER TABLE "DealTag" ADD CONSTRAINT "DealTag_dealId_fkey"
 ALTER TABLE "DealTag" ADD CONSTRAINT "DealTag_tagId_fkey" 
     FOREIGN KEY ("tagId") REFERENCES "Tag"("id") ON DELETE CASCADE ON UPDATE CASCADE;
 
+-- Activity
+ALTER TABLE "Activity" ADD CONSTRAINT "Activity_workspaceId_fkey" 
+    FOREIGN KEY ("workspaceId") REFERENCES "Workspace"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+ALTER TABLE "Activity" ADD CONSTRAINT "Activity_userId_fkey" 
+    FOREIGN KEY ("userId") REFERENCES "User"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
+
+-- Note
+ALTER TABLE "Note" ADD CONSTRAINT "Note_workspaceId_fkey" 
+    FOREIGN KEY ("workspaceId") REFERENCES "Workspace"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+ALTER TABLE "Note" ADD CONSTRAINT "Note_userId_fkey" 
+    FOREIGN KEY ("userId") REFERENCES "User"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
+
+-- Message
+ALTER TABLE "Message" ADD CONSTRAINT "Message_workspaceId_fkey" 
+    FOREIGN KEY ("workspaceId") REFERENCES "Workspace"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+ALTER TABLE "Message" ADD CONSTRAINT "Message_contactId_fkey" 
+    FOREIGN KEY ("contactId") REFERENCES "Contact"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+
+-- Email
+ALTER TABLE "Email" ADD CONSTRAINT "Email_workspaceId_fkey" 
+    FOREIGN KEY ("workspaceId") REFERENCES "Workspace"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+ALTER TABLE "Email" ADD CONSTRAINT "Email_contactId_fkey" 
+    FOREIGN KEY ("contactId") REFERENCES "Contact"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+
+-- Call
+ALTER TABLE "Call" ADD CONSTRAINT "Call_workspaceId_fkey" 
+    FOREIGN KEY ("workspaceId") REFERENCES "Workspace"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+ALTER TABLE "Call" ADD CONSTRAINT "Call_contactId_fkey" 
+    FOREIGN KEY ("contactId") REFERENCES "Contact"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+
+-- Meeting
+ALTER TABLE "Meeting" ADD CONSTRAINT "Meeting_workspaceId_fkey" 
+    FOREIGN KEY ("workspaceId") REFERENCES "Workspace"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+ALTER TABLE "Meeting" ADD CONSTRAINT "Meeting_userId_fkey" 
+    FOREIGN KEY ("userId") REFERENCES "User"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
+
+-- MeetingAttendee
+ALTER TABLE "MeetingAttendee" ADD CONSTRAINT "MeetingAttendee_meetingId_fkey" 
+    FOREIGN KEY ("meetingId") REFERENCES "Meeting"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+
+-- DealStageHistory
+ALTER TABLE "DealStageHistory" ADD CONSTRAINT "DealStageHistory_workspaceId_fkey" 
+    FOREIGN KEY ("workspaceId") REFERENCES "Workspace"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+ALTER TABLE "DealStageHistory" ADD CONSTRAINT "DealStageHistory_dealId_fkey" 
+    FOREIGN KEY ("dealId") REFERENCES "Deal"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+
 -- =====================================================
 -- SEEDS/DADOS INICIAIS
 -- =====================================================
@@ -582,3 +879,9 @@ INSERT INTO "AdminRole" ("id", "name") VALUES
     ('cladmin_admin', 'admin'),
     ('cladmin_manager', 'manager')
 ON CONFLICT ("name") DO NOTHING;
+
+-- PortfolioItem
+ALTER TABLE "PortfolioItem" ADD CONSTRAINT "PortfolioItem_workspaceId_fkey" 
+    FOREIGN KEY ("workspaceId") REFERENCES "Workspace"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+ALTER TABLE "PortfolioItem" ADD CONSTRAINT "PortfolioItem_createdById_fkey" 
+    FOREIGN KEY ("createdById") REFERENCES "User"("id") ON DELETE RESTRICT ON UPDATE CASCADE;

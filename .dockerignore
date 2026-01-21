@@ -1,10 +1,12 @@
-# Git
+# Build related
 .git
 .gitignore
-
-# Environment
-.env
-.env.*
+.dockerignore
+Dockerfile
+docker-compose.yml
+linkko-api.exe
+bin/
+dist/
 
 # Documentation
 *.md
@@ -16,18 +18,17 @@ docs/
 *.swp
 *.swo
 
-# Temporary files
+# Temporary and Logs
 tmp/
 temp/
 *.log
+.gemini/
 
-# Build artifacts
-linkko-api
-api
-migrate
-cleanup
-
-# Test files
+# Test artifacts
+coverage.out
 *_test.go
 testdata/
-coverage.out
+
+# OS files
+.DS_Store
+Thumbs.db

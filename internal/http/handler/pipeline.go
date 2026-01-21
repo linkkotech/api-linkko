@@ -13,7 +13,6 @@ import (
 	"linkko-api/internal/service"
 
 	"github.com/go-chi/chi/v5"
-	"github.com/google/uuid"
 	"go.uber.org/zap"
 )
 
@@ -30,10 +29,9 @@ func (h *PipelineHandler) ListPipelines(w http.ResponseWriter, r *http.Request) 
 	ctx := r.Context()
 	log := logger.GetLogger(ctx)
 
-	workspaceIDStr := chi.URLParam(r, "workspaceId")
-	workspaceID, err := uuid.Parse(workspaceIDStr)
-	if err != nil {
-		writeError(w, ctx, log, http.StatusBadRequest, "INVALID_WORKSPACE_ID", "workspaceId must be a valid UUID")
+	workspaceID := chi.URLParam(r, "workspaceId")
+	if workspaceID == "" {
+		writeError(w, ctx, log, http.StatusBadRequest, "INVALID_WORKSPACE_ID", "workspaceId is required")
 		return
 	}
 
@@ -43,10 +41,9 @@ func (h *PipelineHandler) ListPipelines(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 
-	actorID, err := uuid.Parse(claims.ActorID)
-	if err != nil {
-		log.Error(ctx, "invalid actorID in claims", zap.String("actorId", claims.ActorID), zap.Error(err))
-		writeError(w, ctx, log, http.StatusInternalServerError, "INTERNAL_ERROR", "invalid authentication claims")
+	actorID := claims.ActorID
+	if actorID == "" {
+		writeError(w, ctx, log, http.StatusUnauthorized, "UNAUTHORIZED", "actorID not found in claims")
 		return
 	}
 
@@ -74,33 +71,10 @@ func (h *PipelineHandler) ListPipelines(w http.ResponseWriter, r *http.Request) 
 		params.IncludeStages = true
 	}
 
-	// Filtros opcionais
-	if pipelineTypeStr := r.URL.Query().Get("pipelineType"); pipelineTypeStr != "" {
-		pipelineType := domain.PipelineType(pipelineTypeStr)
-		if !pipelineType.IsValid() {
-			writeError(w, ctx, log, http.StatusBadRequest, "INVALID_PIPELINE_TYPE", "invalid pipelineType value")
-			return
-		}
-		params.PipelineType = &pipelineType
-	}
-
-	if isActiveStr := r.URL.Query().Get("isActive"); isActiveStr != "" {
-		isActive := isActiveStr == "true"
-		params.IsActive = &isActive
-	}
-
-	if isDefaultStr := r.URL.Query().Get("isDefault"); isDefaultStr != "" {
-		isDefault := isDefaultStr == "true"
-		params.IsDefault = &isDefault
-	}
-
-	if ownerIDStr := r.URL.Query().Get("ownerId"); ownerIDStr != "" {
-		ownerID, err := uuid.Parse(ownerIDStr)
-		if err != nil {
-			writeError(w, ctx, log, http.StatusBadRequest, "INVALID_OWNER_ID", "ownerId must be a valid UUID")
-			return
-		}
-		params.OwnerID = &ownerID
+	// Optional filters
+	if isDefault := r.URL.Query().Get("isDefault"); isDefault != "" {
+		isDefaultBool := isDefault == "true"
+		params.IsDefault = &isDefaultBool
 	}
 
 	if search := r.URL.Query().Get("q"); search != "" {
@@ -108,8 +82,8 @@ func (h *PipelineHandler) ListPipelines(w http.ResponseWriter, r *http.Request) 
 	}
 
 	log.Info(ctx, "listing pipelines",
-		zap.String("workspaceId", workspaceID.String()),
-		zap.String("actorId", actorID.String()),
+		zap.String("workspaceId", workspaceID),
+		zap.String("actorId", actorID),
 		zap.Int("limit", params.Limit),
 		zap.Bool("includeStages", params.IncludeStages),
 	)
@@ -121,7 +95,7 @@ func (h *PipelineHandler) ListPipelines(w http.ResponseWriter, r *http.Request) 
 	}
 
 	log.Info(ctx, "pipelines listed successfully",
-		zap.String("workspaceId", workspaceID.String()),
+		zap.String("workspaceId", workspaceID),
 		zap.Int("count", len(response.Data)),
 		zap.Bool("hasNextPage", response.Meta.HasNextPage),
 	)
@@ -134,17 +108,15 @@ func (h *PipelineHandler) GetPipeline(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 	log := logger.GetLogger(ctx)
 
-	workspaceIDStr := chi.URLParam(r, "workspaceId")
-	workspaceID, err := uuid.Parse(workspaceIDStr)
-	if err != nil {
-		writeError(w, ctx, log, http.StatusBadRequest, "INVALID_WORKSPACE_ID", "workspaceId must be a valid UUID")
+	workspaceID := chi.URLParam(r, "workspaceId")
+	if workspaceID == "" {
+		writeError(w, ctx, log, http.StatusBadRequest, "INVALID_WORKSPACE_ID", "workspaceId is required")
 		return
 	}
 
-	pipelineIDStr := chi.URLParam(r, "pipelineId")
-	pipelineID, err := uuid.Parse(pipelineIDStr)
-	if err != nil {
-		writeError(w, ctx, log, http.StatusBadRequest, "INVALID_PIPELINE_ID", "pipelineId must be a valid UUID")
+	pipelineID := chi.URLParam(r, "pipelineId")
+	if pipelineID == "" {
+		writeError(w, ctx, log, http.StatusBadRequest, "INVALID_PIPELINE_ID", "pipelineId is required")
 		return
 	}
 
@@ -154,17 +126,16 @@ func (h *PipelineHandler) GetPipeline(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	actorID, err := uuid.Parse(claims.ActorID)
-	if err != nil {
-		log.Error(ctx, "invalid actorID in claims", zap.String("actorId", claims.ActorID), zap.Error(err))
-		writeError(w, ctx, log, http.StatusInternalServerError, "INTERNAL_ERROR", "invalid authentication claims")
+	actorID := claims.ActorID
+	if actorID == "" {
+		writeError(w, ctx, log, http.StatusUnauthorized, "UNAUTHORIZED", "actorID not found in claims")
 		return
 	}
 
 	log.Info(ctx, "fetching pipeline",
-		zap.String("workspaceId", workspaceID.String()),
-		zap.String("pipelineId", pipelineID.String()),
-		zap.String("actorId", actorID.String()),
+		zap.String("workspaceId", workspaceID),
+		zap.String("pipelineId", pipelineID),
+		zap.String("actorId", actorID),
 	)
 
 	pipeline, err := h.service.GetPipeline(ctx, workspaceID, pipelineID, actorID)
@@ -174,7 +145,7 @@ func (h *PipelineHandler) GetPipeline(w http.ResponseWriter, r *http.Request) {
 	}
 
 	log.Info(ctx, "pipeline fetched successfully",
-		zap.String("pipelineId", pipeline.ID.String()),
+		zap.String("pipelineId", pipeline.ID),
 	)
 
 	writeJSON(w, http.StatusOK, pipeline)
@@ -185,10 +156,9 @@ func (h *PipelineHandler) CreatePipeline(w http.ResponseWriter, r *http.Request)
 	ctx := r.Context()
 	log := logger.GetLogger(ctx)
 
-	workspaceIDStr := chi.URLParam(r, "workspaceId")
-	workspaceID, err := uuid.Parse(workspaceIDStr)
-	if err != nil {
-		writeError(w, ctx, log, http.StatusBadRequest, "INVALID_WORKSPACE_ID", "workspaceId must be a valid UUID")
+	workspaceID := chi.URLParam(r, "workspaceId")
+	if workspaceID == "" {
+		writeError(w, ctx, log, http.StatusBadRequest, "INVALID_WORKSPACE_ID", "workspaceId is required")
 		return
 	}
 
@@ -198,10 +168,9 @@ func (h *PipelineHandler) CreatePipeline(w http.ResponseWriter, r *http.Request)
 		return
 	}
 
-	actorID, err := uuid.Parse(claims.ActorID)
-	if err != nil {
-		log.Error(ctx, "invalid actorID in claims", zap.String("actorId", claims.ActorID), zap.Error(err))
-		writeError(w, ctx, log, http.StatusInternalServerError, "INTERNAL_ERROR", "invalid authentication claims")
+	actorID := claims.ActorID
+	if actorID == "" {
+		writeError(w, ctx, log, http.StatusUnauthorized, "UNAUTHORIZED", "actorID not found in claims")
 		return
 	}
 
@@ -213,8 +182,8 @@ func (h *PipelineHandler) CreatePipeline(w http.ResponseWriter, r *http.Request)
 	}
 
 	log.Info(ctx, "creating pipeline",
-		zap.String("workspaceId", workspaceID.String()),
-		zap.String("actorId", actorID.String()),
+		zap.String("workspaceId", workspaceID),
+		zap.String("actorId", actorID),
 		zap.String("name", req.Name),
 	)
 
@@ -225,7 +194,7 @@ func (h *PipelineHandler) CreatePipeline(w http.ResponseWriter, r *http.Request)
 	}
 
 	log.Info(ctx, "pipeline created successfully",
-		zap.String("pipelineId", pipeline.ID.String()),
+		zap.String("pipelineId", pipeline.ID),
 	)
 
 	writeJSON(w, http.StatusCreated, pipeline)
@@ -236,10 +205,9 @@ func (h *PipelineHandler) CreatePipelineWithStages(w http.ResponseWriter, r *htt
 	ctx := r.Context()
 	log := logger.GetLogger(ctx)
 
-	workspaceIDStr := chi.URLParam(r, "workspaceId")
-	workspaceID, err := uuid.Parse(workspaceIDStr)
-	if err != nil {
-		writeError(w, ctx, log, http.StatusBadRequest, "INVALID_WORKSPACE_ID", "workspaceId must be a valid UUID")
+	workspaceID := chi.URLParam(r, "workspaceId")
+	if workspaceID == "" {
+		writeError(w, ctx, log, http.StatusBadRequest, "INVALID_WORKSPACE_ID", "workspaceId is required")
 		return
 	}
 
@@ -249,10 +217,9 @@ func (h *PipelineHandler) CreatePipelineWithStages(w http.ResponseWriter, r *htt
 		return
 	}
 
-	actorID, err := uuid.Parse(claims.ActorID)
-	if err != nil {
-		log.Error(ctx, "invalid actorID in claims", zap.String("actorId", claims.ActorID), zap.Error(err))
-		writeError(w, ctx, log, http.StatusInternalServerError, "INTERNAL_ERROR", "invalid authentication claims")
+	actorID := claims.ActorID
+	if actorID == "" {
+		writeError(w, ctx, log, http.StatusUnauthorized, "UNAUTHORIZED", "actorID not found in claims")
 		return
 	}
 
@@ -264,8 +231,8 @@ func (h *PipelineHandler) CreatePipelineWithStages(w http.ResponseWriter, r *htt
 	}
 
 	log.Info(ctx, "creating pipeline with stages",
-		zap.String("workspaceId", workspaceID.String()),
-		zap.String("actorId", actorID.String()),
+		zap.String("workspaceId", workspaceID),
+		zap.String("actorId", actorID),
 		zap.String("name", req.Pipeline.Name),
 		zap.Int("stageCount", len(req.Stages)),
 	)
@@ -277,7 +244,7 @@ func (h *PipelineHandler) CreatePipelineWithStages(w http.ResponseWriter, r *htt
 	}
 
 	log.Info(ctx, "pipeline created successfully with stages",
-		zap.String("pipelineId", pipeline.ID.String()),
+		zap.String("pipelineId", pipeline.ID),
 	)
 
 	writeJSON(w, http.StatusCreated, pipeline)
@@ -288,17 +255,10 @@ func (h *PipelineHandler) UpdatePipeline(w http.ResponseWriter, r *http.Request)
 	ctx := r.Context()
 	log := logger.GetLogger(ctx)
 
-	workspaceIDStr := chi.URLParam(r, "workspaceId")
-	workspaceID, err := uuid.Parse(workspaceIDStr)
-	if err != nil {
-		writeError(w, ctx, log, http.StatusBadRequest, "INVALID_WORKSPACE_ID", "workspaceId must be a valid UUID")
-		return
-	}
-
-	pipelineIDStr := chi.URLParam(r, "pipelineId")
-	pipelineID, err := uuid.Parse(pipelineIDStr)
-	if err != nil {
-		writeError(w, ctx, log, http.StatusBadRequest, "INVALID_PIPELINE_ID", "pipelineId must be a valid UUID")
+	workspaceID := chi.URLParam(r, "workspaceId")
+	pipelineID := chi.URLParam(r, "pipelineId")
+	if workspaceID == "" || pipelineID == "" {
+		writeError(w, ctx, log, http.StatusBadRequest, "INVALID_ID", "workspaceId and pipelineId are required")
 		return
 	}
 
@@ -308,10 +268,9 @@ func (h *PipelineHandler) UpdatePipeline(w http.ResponseWriter, r *http.Request)
 		return
 	}
 
-	actorID, err := uuid.Parse(claims.ActorID)
-	if err != nil {
-		log.Error(ctx, "invalid actorID in claims", zap.String("actorId", claims.ActorID), zap.Error(err))
-		writeError(w, ctx, log, http.StatusInternalServerError, "INTERNAL_ERROR", "invalid authentication claims")
+	actorID := claims.ActorID
+	if actorID == "" {
+		writeError(w, ctx, log, http.StatusUnauthorized, "UNAUTHORIZED", "actorID not found in claims")
 		return
 	}
 
@@ -323,9 +282,9 @@ func (h *PipelineHandler) UpdatePipeline(w http.ResponseWriter, r *http.Request)
 	}
 
 	log.Info(ctx, "updating pipeline",
-		zap.String("workspaceId", workspaceID.String()),
-		zap.String("pipelineId", pipelineID.String()),
-		zap.String("actorId", actorID.String()),
+		zap.String("workspaceId", workspaceID),
+		zap.String("pipelineId", pipelineID),
+		zap.String("actorId", actorID),
 	)
 
 	pipeline, err := h.service.UpdatePipeline(ctx, workspaceID, pipelineID, actorID, &req)
@@ -335,7 +294,7 @@ func (h *PipelineHandler) UpdatePipeline(w http.ResponseWriter, r *http.Request)
 	}
 
 	log.Info(ctx, "pipeline updated successfully",
-		zap.String("pipelineId", pipeline.ID.String()),
+		zap.String("pipelineId", pipeline.ID),
 	)
 
 	writeJSON(w, http.StatusOK, pipeline)
@@ -346,17 +305,10 @@ func (h *PipelineHandler) DeletePipeline(w http.ResponseWriter, r *http.Request)
 	ctx := r.Context()
 	log := logger.GetLogger(ctx)
 
-	workspaceIDStr := chi.URLParam(r, "workspaceId")
-	workspaceID, err := uuid.Parse(workspaceIDStr)
-	if err != nil {
-		writeError(w, ctx, log, http.StatusBadRequest, "INVALID_WORKSPACE_ID", "workspaceId must be a valid UUID")
-		return
-	}
-
-	pipelineIDStr := chi.URLParam(r, "pipelineId")
-	pipelineID, err := uuid.Parse(pipelineIDStr)
-	if err != nil {
-		writeError(w, ctx, log, http.StatusBadRequest, "INVALID_PIPELINE_ID", "pipelineId must be a valid UUID")
+	workspaceID := chi.URLParam(r, "workspaceId")
+	pipelineID := chi.URLParam(r, "pipelineId")
+	if workspaceID == "" || pipelineID == "" {
+		writeError(w, ctx, log, http.StatusBadRequest, "INVALID_ID", "workspaceId and pipelineId are required")
 		return
 	}
 
@@ -366,27 +318,26 @@ func (h *PipelineHandler) DeletePipeline(w http.ResponseWriter, r *http.Request)
 		return
 	}
 
-	actorID, err := uuid.Parse(claims.ActorID)
-	if err != nil {
-		log.Error(ctx, "invalid actorID in claims", zap.String("actorId", claims.ActorID), zap.Error(err))
-		writeError(w, ctx, log, http.StatusInternalServerError, "INTERNAL_ERROR", "invalid authentication claims")
+	actorID := claims.ActorID
+	if actorID == "" {
+		writeError(w, ctx, log, http.StatusUnauthorized, "UNAUTHORIZED", "actorID not found in claims")
 		return
 	}
 
 	log.Info(ctx, "deleting pipeline",
-		zap.String("workspaceId", workspaceID.String()),
-		zap.String("pipelineId", pipelineID.String()),
-		zap.String("actorId", actorID.String()),
+		zap.String("workspaceId", workspaceID),
+		zap.String("pipelineId", pipelineID),
+		zap.String("actorId", actorID),
 	)
 
-	err = h.service.DeletePipeline(ctx, workspaceID, pipelineID, actorID)
+	err := h.service.DeletePipeline(ctx, workspaceID, pipelineID, actorID)
 	if err != nil {
 		handlePipelineServiceError(w, ctx, log, err)
 		return
 	}
 
 	log.Info(ctx, "pipeline deleted successfully",
-		zap.String("pipelineId", pipelineID.String()),
+		zap.String("pipelineId", pipelineID),
 	)
 
 	w.WriteHeader(http.StatusNoContent)
@@ -397,10 +348,9 @@ func (h *PipelineHandler) SeedDefaultPipeline(w http.ResponseWriter, r *http.Req
 	ctx := r.Context()
 	log := logger.GetLogger(ctx)
 
-	workspaceIDStr := chi.URLParam(r, "workspaceId")
-	workspaceID, err := uuid.Parse(workspaceIDStr)
-	if err != nil {
-		writeError(w, ctx, log, http.StatusBadRequest, "INVALID_WORKSPACE_ID", "workspaceId must be a valid UUID")
+	workspaceID := chi.URLParam(r, "workspaceId")
+	if workspaceID == "" {
+		writeError(w, ctx, log, http.StatusBadRequest, "INVALID_WORKSPACE_ID", "workspaceId is required")
 		return
 	}
 
@@ -410,16 +360,15 @@ func (h *PipelineHandler) SeedDefaultPipeline(w http.ResponseWriter, r *http.Req
 		return
 	}
 
-	actorID, err := uuid.Parse(claims.ActorID)
-	if err != nil {
-		log.Error(ctx, "invalid actorID in claims", zap.String("actorId", claims.ActorID), zap.Error(err))
-		writeError(w, ctx, log, http.StatusInternalServerError, "INTERNAL_ERROR", "invalid authentication claims")
+	actorID := claims.ActorID
+	if actorID == "" {
+		writeError(w, ctx, log, http.StatusUnauthorized, "UNAUTHORIZED", "actorID not found in claims")
 		return
 	}
 
 	log.Info(ctx, "seeding default pipeline",
-		zap.String("workspaceId", workspaceID.String()),
-		zap.String("actorId", actorID.String()),
+		zap.String("workspaceId", workspaceID),
+		zap.String("actorId", actorID),
 	)
 
 	pipeline, err := h.service.SeedDefaultPipeline(ctx, workspaceID, actorID)
@@ -429,7 +378,7 @@ func (h *PipelineHandler) SeedDefaultPipeline(w http.ResponseWriter, r *http.Req
 	}
 
 	log.Info(ctx, "default pipeline seeded successfully",
-		zap.String("pipelineId", pipeline.ID.String()),
+		zap.String("pipelineId", pipeline.ID),
 	)
 
 	writeJSON(w, http.StatusCreated, pipeline)
@@ -442,17 +391,10 @@ func (h *PipelineHandler) ListStages(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 	log := logger.GetLogger(ctx)
 
-	workspaceIDStr := chi.URLParam(r, "workspaceId")
-	workspaceID, err := uuid.Parse(workspaceIDStr)
-	if err != nil {
-		writeError(w, ctx, log, http.StatusBadRequest, "INVALID_WORKSPACE_ID", "workspaceId must be a valid UUID")
-		return
-	}
-
-	pipelineIDStr := chi.URLParam(r, "pipelineId")
-	pipelineID, err := uuid.Parse(pipelineIDStr)
-	if err != nil {
-		writeError(w, ctx, log, http.StatusBadRequest, "INVALID_PIPELINE_ID", "pipelineId must be a valid UUID")
+	workspaceID := chi.URLParam(r, "workspaceId")
+	pipelineID := chi.URLParam(r, "pipelineId")
+	if workspaceID == "" || pipelineID == "" {
+		writeError(w, ctx, log, http.StatusBadRequest, "INVALID_ID", "workspaceId and pipelineId are required")
 		return
 	}
 
@@ -462,17 +404,16 @@ func (h *PipelineHandler) ListStages(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	actorID, err := uuid.Parse(claims.ActorID)
-	if err != nil {
-		log.Error(ctx, "invalid actorID in claims", zap.String("actorId", claims.ActorID), zap.Error(err))
-		writeError(w, ctx, log, http.StatusInternalServerError, "INTERNAL_ERROR", "invalid authentication claims")
+	actorID := claims.ActorID
+	if actorID == "" {
+		writeError(w, ctx, log, http.StatusUnauthorized, "UNAUTHORIZED", "actorID not found in claims")
 		return
 	}
 
 	log.Info(ctx, "listing stages",
-		zap.String("workspaceId", workspaceID.String()),
-		zap.String("pipelineId", pipelineID.String()),
-		zap.String("actorId", actorID.String()),
+		zap.String("workspaceId", workspaceID),
+		zap.String("pipelineId", pipelineID),
+		zap.String("actorId", actorID),
 	)
 
 	stages, err := h.service.ListStages(ctx, workspaceID, pipelineID, actorID)
@@ -482,7 +423,7 @@ func (h *PipelineHandler) ListStages(w http.ResponseWriter, r *http.Request) {
 	}
 
 	log.Info(ctx, "stages listed successfully",
-		zap.String("pipelineId", pipelineID.String()),
+		zap.String("pipelineId", pipelineID),
 		zap.Int("count", len(stages)),
 	)
 
@@ -496,17 +437,10 @@ func (h *PipelineHandler) CreateStage(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 	log := logger.GetLogger(ctx)
 
-	workspaceIDStr := chi.URLParam(r, "workspaceId")
-	workspaceID, err := uuid.Parse(workspaceIDStr)
-	if err != nil {
-		writeError(w, ctx, log, http.StatusBadRequest, "INVALID_WORKSPACE_ID", "workspaceId must be a valid UUID")
-		return
-	}
-
-	pipelineIDStr := chi.URLParam(r, "pipelineId")
-	pipelineID, err := uuid.Parse(pipelineIDStr)
-	if err != nil {
-		writeError(w, ctx, log, http.StatusBadRequest, "INVALID_PIPELINE_ID", "pipelineId must be a valid UUID")
+	workspaceID := chi.URLParam(r, "workspaceId")
+	pipelineID := chi.URLParam(r, "pipelineId")
+	if workspaceID == "" || pipelineID == "" {
+		writeError(w, ctx, log, http.StatusBadRequest, "INVALID_ID", "workspaceId and pipelineId are required")
 		return
 	}
 
@@ -516,10 +450,9 @@ func (h *PipelineHandler) CreateStage(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	actorID, err := uuid.Parse(claims.ActorID)
-	if err != nil {
-		log.Error(ctx, "invalid actorID in claims", zap.String("actorId", claims.ActorID), zap.Error(err))
-		writeError(w, ctx, log, http.StatusInternalServerError, "INTERNAL_ERROR", "invalid authentication claims")
+	actorID := claims.ActorID
+	if actorID == "" {
+		writeError(w, ctx, log, http.StatusUnauthorized, "UNAUTHORIZED", "actorID not found in claims")
 		return
 	}
 
@@ -531,9 +464,9 @@ func (h *PipelineHandler) CreateStage(w http.ResponseWriter, r *http.Request) {
 	}
 
 	log.Info(ctx, "creating stage",
-		zap.String("workspaceId", workspaceID.String()),
-		zap.String("pipelineId", pipelineID.String()),
-		zap.String("actorId", actorID.String()),
+		zap.String("workspaceId", workspaceID),
+		zap.String("pipelineId", pipelineID),
+		zap.String("actorId", actorID),
 		zap.String("name", req.Name),
 	)
 
@@ -544,7 +477,7 @@ func (h *PipelineHandler) CreateStage(w http.ResponseWriter, r *http.Request) {
 	}
 
 	log.Info(ctx, "stage created successfully",
-		zap.String("stageId", stage.ID.String()),
+		zap.String("stageId", stage.ID),
 	)
 
 	writeJSON(w, http.StatusCreated, stage)
@@ -555,17 +488,10 @@ func (h *PipelineHandler) UpdateStage(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 	log := logger.GetLogger(ctx)
 
-	workspaceIDStr := chi.URLParam(r, "workspaceId")
-	workspaceID, err := uuid.Parse(workspaceIDStr)
-	if err != nil {
-		writeError(w, ctx, log, http.StatusBadRequest, "INVALID_WORKSPACE_ID", "workspaceId must be a valid UUID")
-		return
-	}
-
-	stageIDStr := chi.URLParam(r, "stageId")
-	stageID, err := uuid.Parse(stageIDStr)
-	if err != nil {
-		writeError(w, ctx, log, http.StatusBadRequest, "INVALID_STAGE_ID", "stageId must be a valid UUID")
+	workspaceID := chi.URLParam(r, "workspaceId")
+	stageID := chi.URLParam(r, "stageId")
+	if workspaceID == "" || stageID == "" {
+		writeError(w, ctx, log, http.StatusBadRequest, "INVALID_ID", "workspaceId and stageId are required")
 		return
 	}
 
@@ -575,10 +501,9 @@ func (h *PipelineHandler) UpdateStage(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	actorID, err := uuid.Parse(claims.ActorID)
-	if err != nil {
-		log.Error(ctx, "invalid actorID in claims", zap.String("actorId", claims.ActorID), zap.Error(err))
-		writeError(w, ctx, log, http.StatusInternalServerError, "INTERNAL_ERROR", "invalid authentication claims")
+	actorID := claims.ActorID
+	if actorID == "" {
+		writeError(w, ctx, log, http.StatusUnauthorized, "UNAUTHORIZED", "actorID not found in claims")
 		return
 	}
 
@@ -590,9 +515,9 @@ func (h *PipelineHandler) UpdateStage(w http.ResponseWriter, r *http.Request) {
 	}
 
 	log.Info(ctx, "updating stage",
-		zap.String("workspaceId", workspaceID.String()),
-		zap.String("stageId", stageID.String()),
-		zap.String("actorId", actorID.String()),
+		zap.String("workspaceId", workspaceID),
+		zap.String("stageId", stageID),
+		zap.String("actorId", actorID),
 	)
 
 	stage, err := h.service.UpdateStage(ctx, workspaceID, stageID, actorID, &req)
@@ -602,7 +527,7 @@ func (h *PipelineHandler) UpdateStage(w http.ResponseWriter, r *http.Request) {
 	}
 
 	log.Info(ctx, "stage updated successfully",
-		zap.String("stageId", stage.ID.String()),
+		zap.String("stageId", stage.ID),
 	)
 
 	writeJSON(w, http.StatusOK, stage)
@@ -613,17 +538,10 @@ func (h *PipelineHandler) DeleteStage(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 	log := logger.GetLogger(ctx)
 
-	workspaceIDStr := chi.URLParam(r, "workspaceId")
-	workspaceID, err := uuid.Parse(workspaceIDStr)
-	if err != nil {
-		writeError(w, ctx, log, http.StatusBadRequest, "INVALID_WORKSPACE_ID", "workspaceId must be a valid UUID")
-		return
-	}
-
-	stageIDStr := chi.URLParam(r, "stageId")
-	stageID, err := uuid.Parse(stageIDStr)
-	if err != nil {
-		writeError(w, ctx, log, http.StatusBadRequest, "INVALID_STAGE_ID", "stageId must be a valid UUID")
+	workspaceID := chi.URLParam(r, "workspaceId")
+	stageID := chi.URLParam(r, "stageId")
+	if workspaceID == "" || stageID == "" {
+		writeError(w, ctx, log, http.StatusBadRequest, "INVALID_ID", "workspaceId and stageId are required")
 		return
 	}
 
@@ -633,27 +551,26 @@ func (h *PipelineHandler) DeleteStage(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	actorID, err := uuid.Parse(claims.ActorID)
-	if err != nil {
-		log.Error(ctx, "invalid actorID in claims", zap.String("actorId", claims.ActorID), zap.Error(err))
-		writeError(w, ctx, log, http.StatusInternalServerError, "INTERNAL_ERROR", "invalid authentication claims")
+	actorID := claims.ActorID
+	if actorID == "" {
+		writeError(w, ctx, log, http.StatusUnauthorized, "UNAUTHORIZED", "actorID not found in claims")
 		return
 	}
 
 	log.Info(ctx, "deleting stage",
-		zap.String("workspaceId", workspaceID.String()),
-		zap.String("stageId", stageID.String()),
-		zap.String("actorId", actorID.String()),
+		zap.String("workspaceId", workspaceID),
+		zap.String("stageId", stageID),
+		zap.String("actorId", actorID),
 	)
 
-	err = h.service.DeleteStage(ctx, workspaceID, stageID, actorID)
+	err := h.service.DeleteStage(ctx, workspaceID, stageID, actorID)
 	if err != nil {
 		handlePipelineServiceError(w, ctx, log, err)
 		return
 	}
 
 	log.Info(ctx, "stage deleted successfully",
-		zap.String("stageId", stageID.String()),
+		zap.String("stageId", stageID),
 	)
 
 	w.WriteHeader(http.StatusNoContent)

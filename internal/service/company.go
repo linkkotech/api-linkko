@@ -7,8 +7,6 @@ import (
 
 	"linkko-api/internal/domain"
 	"linkko-api/internal/repo"
-
-	"github.com/google/uuid"
 )
 
 var (
@@ -33,7 +31,7 @@ func NewCompanyService(companyRepo *repo.CompanyRepository, auditRepo *repo.Audi
 // ListCompanies retrieves companies with RBAC validation.
 // Permission: all workspace members can list companies.
 // Role is fetched from database to enforce real-time authorization.
-func (s *CompanyService) ListCompanies(ctx context.Context, workspaceID, actorID uuid.UUID, params domain.ListCompaniesParams) (*domain.CompanyListResponse, error) {
+func (s *CompanyService) ListCompanies(ctx context.Context, workspaceID, actorID string, params domain.ListCompaniesParams) (*domain.CompanyListResponse, error) {
 	// Fetch user's role in this workspace from database
 	role, err := s.workspaceRepo.GetMemberRole(ctx, actorID, workspaceID)
 	if err != nil {
@@ -68,7 +66,7 @@ func (s *CompanyService) ListCompanies(ctx context.Context, workspaceID, actorID
 // GetCompany retrieves a single company with RBAC validation.
 // Permission: all workspace members can view companies.
 // Role is fetched from database to enforce real-time authorization.
-func (s *CompanyService) GetCompany(ctx context.Context, workspaceID, companyID, actorID uuid.UUID) (*domain.Company, error) {
+func (s *CompanyService) GetCompany(ctx context.Context, workspaceID, companyID, actorID string) (*domain.Company, error) {
 	// Fetch user's role in this workspace from database
 	role, err := s.workspaceRepo.GetMemberRole(ctx, actorID, workspaceID)
 	if err != nil {
@@ -94,7 +92,7 @@ func (s *CompanyService) GetCompany(ctx context.Context, workspaceID, companyID,
 // CreateCompany creates a new company with RBAC and business validation.
 // Permission: admin, manager, user can create companies. Viewer cannot.
 // Role is fetched from database to enforce real-time authorization.
-func (s *CompanyService) CreateCompany(ctx context.Context, workspaceID, actorID uuid.UUID, req *domain.CreateCompanyRequest) (*domain.Company, error) {
+func (s *CompanyService) CreateCompany(ctx context.Context, workspaceID, actorID string, req *domain.CreateCompanyRequest) (*domain.Company, error) {
 	// Fetch user's role in this workspace from database
 	role, err := s.workspaceRepo.GetMemberRole(ctx, actorID, workspaceID)
 	if err != nil {
@@ -110,11 +108,11 @@ func (s *CompanyService) CreateCompany(ctx context.Context, workspaceID, actorID
 	}
 
 	company := &domain.Company{
-		ID:             uuid.New(),
+		ID:             generateID(),
 		WorkspaceID:    workspaceID,
 		Name:           req.Name,
 		LifecycleStage: *req.LifecycleStage,
-		CompanySize:    *req.CompanySize,
+		Size:           *req.CompanySize,
 		OwnerID:        actorID, // Default: creator is owner
 	}
 
@@ -160,11 +158,11 @@ func (s *CompanyService) CreateCompany(ctx context.Context, workspaceID, actorID
 	}
 
 	// Audit: log company creation
-	companyIDStr := company.ID.String()
+	companyIDStr := company.ID
 	auditErr := s.auditRepo.LogAction(
 		ctx,
-		workspaceID.String(),
-		actorID.String(),
+		workspaceID,
+		actorID,
 		"create",
 		"company",
 		&companyIDStr,
@@ -182,7 +180,7 @@ func (s *CompanyService) CreateCompany(ctx context.Context, workspaceID, actorID
 // UpdateCompany updates a company with RBAC and business validation.
 // Permission: admin, manager, user can update. Viewer cannot.
 // Role is fetched from database to enforce real-time authorization.
-func (s *CompanyService) UpdateCompany(ctx context.Context, workspaceID, companyID, actorID uuid.UUID, req *domain.UpdateCompanyRequest) (*domain.Company, error) {
+func (s *CompanyService) UpdateCompany(ctx context.Context, workspaceID, companyID, actorID string, req *domain.UpdateCompanyRequest) (*domain.Company, error) {
 	// Fetch user's role in this workspace from database
 	role, err := s.workspaceRepo.GetMemberRole(ctx, actorID, workspaceID)
 	if err != nil {
@@ -215,11 +213,11 @@ func (s *CompanyService) UpdateCompany(ctx context.Context, workspaceID, company
 	}
 
 	// Audit: log company update
-	companyIDStr := companyID.String()
+	companyIDStr := companyID
 	auditErr := s.auditRepo.LogAction(
 		ctx,
-		workspaceID.String(),
-		actorID.String(),
+		workspaceID,
+		actorID,
 		"update",
 		"company",
 		&companyIDStr,
@@ -237,7 +235,7 @@ func (s *CompanyService) UpdateCompany(ctx context.Context, workspaceID, company
 // DeleteCompany soft deletes a company with RBAC validation.
 // Permission: only admin and manager can delete companies.
 // Role is fetched from database to enforce real-time authorization.
-func (s *CompanyService) DeleteCompany(ctx context.Context, workspaceID, companyID, actorID uuid.UUID) error {
+func (s *CompanyService) DeleteCompany(ctx context.Context, workspaceID, companyID, actorID string) error {
 	// Fetch user's role in this workspace from database
 	role, err := s.workspaceRepo.GetMemberRole(ctx, actorID, workspaceID)
 	if err != nil {
@@ -258,11 +256,11 @@ func (s *CompanyService) DeleteCompany(ctx context.Context, workspaceID, company
 	}
 
 	// Audit: log company deletion
-	companyIDStr := companyID.String()
+	companyIDStr := companyID
 	auditErr := s.auditRepo.LogAction(
 		ctx,
-		workspaceID.String(),
-		actorID.String(),
+		workspaceID,
+		actorID,
 		"delete",
 		"company",
 		&companyIDStr,

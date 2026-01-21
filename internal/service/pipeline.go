@@ -7,8 +7,6 @@ import (
 
 	"linkko-api/internal/domain"
 	"linkko-api/internal/repo"
-
-	"github.com/google/uuid"
 )
 
 var (
@@ -36,7 +34,7 @@ func NewPipelineService(pipelineRepo *repo.PipelineRepository, auditRepo *repo.A
 
 // ListPipelines retrieves pipelines with optional stages.
 // Permission: all workspace members can list pipelines.
-func (s *PipelineService) ListPipelines(ctx context.Context, workspaceID, actorID uuid.UUID, params domain.ListPipelinesParams) (*domain.PipelineListResponse, error) {
+func (s *PipelineService) ListPipelines(ctx context.Context, workspaceID, actorID string, params domain.ListPipelinesParams) (*domain.PipelineListResponse, error) {
 	// Fetch user's role in this workspace from database
 	role, err := s.workspaceRepo.GetMemberRole(ctx, actorID, workspaceID)
 	if err != nil {
@@ -70,7 +68,7 @@ func (s *PipelineService) ListPipelines(ctx context.Context, workspaceID, actorI
 
 // GetPipeline retrieves a single pipeline with all stages.
 // Permission: all workspace members can view pipelines.
-func (s *PipelineService) GetPipeline(ctx context.Context, workspaceID, pipelineID, actorID uuid.UUID) (*domain.Pipeline, error) {
+func (s *PipelineService) GetPipeline(ctx context.Context, workspaceID, pipelineID, actorID string) (*domain.Pipeline, error) {
 	// Fetch user's role in this workspace from database
 	role, err := s.workspaceRepo.GetMemberRole(ctx, actorID, workspaceID)
 	if err != nil {
@@ -96,7 +94,7 @@ func (s *PipelineService) GetPipeline(ctx context.Context, workspaceID, pipeline
 // CreatePipeline creates a new pipeline with RBAC validation.
 // Permission: only admin and manager can create pipelines.
 // If isDefault is true, sets this pipeline as the workspace default (transaction).
-func (s *PipelineService) CreatePipeline(ctx context.Context, workspaceID, actorID uuid.UUID, req *domain.CreatePipelineRequest) (*domain.Pipeline, error) {
+func (s *PipelineService) CreatePipeline(ctx context.Context, workspaceID, actorID string, req *domain.CreatePipelineRequest) (*domain.Pipeline, error) {
 	// Fetch user's role in this workspace from database
 	role, err := s.workspaceRepo.GetMemberRole(ctx, actorID, workspaceID)
 	if err != nil {
@@ -118,7 +116,7 @@ func (s *PipelineService) CreatePipeline(ctx context.Context, workspaceID, actor
 	}
 
 	pipeline := &domain.Pipeline{
-		ID:           uuid.New(),
+		ID:           generateID(),
 		WorkspaceID:  workspaceID,
 		Name:         req.Name,
 		PipelineType: *req.PipelineType,
@@ -171,11 +169,11 @@ func (s *PipelineService) CreatePipeline(ctx context.Context, workspaceID, actor
 	}
 
 	// Audit: log pipeline creation
-	pipelineIDStr := pipeline.ID.String()
+	pipelineIDStr := pipeline.ID
 	auditErr := s.auditRepo.LogAction(
 		ctx,
-		workspaceID.String(),
-		actorID.String(),
+		workspaceID,
+		actorID,
 		"create",
 		"pipeline",
 		&pipelineIDStr,
@@ -192,7 +190,7 @@ func (s *PipelineService) CreatePipeline(ctx context.Context, workspaceID, actor
 
 // CreatePipelineWithStages creates a pipeline and its stages in a single operation.
 // Permission: only admin and manager can create pipelines.
-func (s *PipelineService) CreatePipelineWithStages(ctx context.Context, workspaceID, actorID uuid.UUID, req *domain.CreatePipelineWithStagesRequest) (*domain.Pipeline, error) {
+func (s *PipelineService) CreatePipelineWithStages(ctx context.Context, workspaceID, actorID string, req *domain.CreatePipelineWithStagesRequest) (*domain.Pipeline, error) {
 	// Fetch user's role in this workspace from database
 	role, err := s.workspaceRepo.GetMemberRole(ctx, actorID, workspaceID)
 	if err != nil {
@@ -221,7 +219,7 @@ func (s *PipelineService) CreatePipelineWithStages(ctx context.Context, workspac
 
 	// Create pipeline
 	pipeline := &domain.Pipeline{
-		ID:           uuid.New(),
+		ID:           generateID(),
 		WorkspaceID:  workspaceID,
 		Name:         req.Pipeline.Name,
 		PipelineType: *req.Pipeline.PipelineType,
@@ -254,10 +252,11 @@ func (s *PipelineService) CreatePipelineWithStages(ctx context.Context, workspac
 		}
 
 		stage := &domain.PipelineStage{
-			ID:         uuid.New(),
-			PipelineID: pipeline.ID,
+			ID:         generateID(),
+			PipelineID: &pipeline.ID,
+			WorkspaceID: workspaceID,
 			Name:       stageReq.Name,
-			StageGroup: *stageReq.StageGroup,
+			Group:      *stageReq.StageGroup,
 			OrderIndex: i + 1, // Auto-assign sequential orderIndex
 		}
 
@@ -267,8 +266,8 @@ func (s *PipelineService) CreatePipelineWithStages(ctx context.Context, workspac
 		if stageReq.Probability != nil {
 			stage.Probability = *stageReq.Probability
 		}
-		if stageReq.AutoArchiveAfterDays != nil {
-			stage.AutoArchiveAfterDays = stageReq.AutoArchiveAfterDays
+		if stageReq.AutoArchiveDays != nil {
+			stage.AutoArchiveDays = stageReq.AutoArchiveDays
 		}
 
 		err = s.pipelineRepo.CreateStage(ctx, stage)
@@ -297,11 +296,11 @@ func (s *PipelineService) CreatePipelineWithStages(ctx context.Context, workspac
 	}
 
 	// Audit: log pipeline creation
-	pipelineIDStr := pipeline.ID.String()
+	pipelineIDStr := pipeline.ID
 	auditErr := s.auditRepo.LogAction(
 		ctx,
-		workspaceID.String(),
-		actorID.String(),
+		workspaceID,
+		actorID,
 		"create",
 		"pipeline_with_stages",
 		&pipelineIDStr,
@@ -319,7 +318,7 @@ func (s *PipelineService) CreatePipelineWithStages(ctx context.Context, workspac
 // UpdatePipeline updates a pipeline with RBAC validation.
 // Permission: only admin and manager can update pipelines.
 // If isDefault changes to true, uses SetAsDefault transaction.
-func (s *PipelineService) UpdatePipeline(ctx context.Context, workspaceID, pipelineID, actorID uuid.UUID, req *domain.UpdatePipelineRequest) (*domain.Pipeline, error) {
+func (s *PipelineService) UpdatePipeline(ctx context.Context, workspaceID, pipelineID, actorID string, req *domain.UpdatePipelineRequest) (*domain.Pipeline, error) {
 	// Fetch user's role in this workspace from database
 	role, err := s.workspaceRepo.GetMemberRole(ctx, actorID, workspaceID)
 	if err != nil {
@@ -380,11 +379,11 @@ func (s *PipelineService) UpdatePipeline(ctx context.Context, workspaceID, pipel
 	}
 
 	// Audit: log pipeline update
-	pipelineIDStr := pipelineID.String()
+	pipelineIDStr := pipelineID
 	auditErr := s.auditRepo.LogAction(
 		ctx,
-		workspaceID.String(),
-		actorID.String(),
+		workspaceID,
+		actorID,
 		"update",
 		"pipeline",
 		&pipelineIDStr,
@@ -402,7 +401,7 @@ func (s *PipelineService) UpdatePipeline(ctx context.Context, workspaceID, pipel
 // DeletePipeline soft deletes a pipeline with RBAC validation.
 // Permission: only admin and manager can delete pipelines.
 // Cannot delete default pipeline (must set another as default first).
-func (s *PipelineService) DeletePipeline(ctx context.Context, workspaceID, pipelineID, actorID uuid.UUID) error {
+func (s *PipelineService) DeletePipeline(ctx context.Context, workspaceID, pipelineID, actorID string) error {
 	// Fetch user's role in this workspace from database
 	role, err := s.workspaceRepo.GetMemberRole(ctx, actorID, workspaceID)
 	if err != nil {
@@ -433,11 +432,11 @@ func (s *PipelineService) DeletePipeline(ctx context.Context, workspaceID, pipel
 	}
 
 	// Audit: log pipeline deletion
-	pipelineIDStr := pipelineID.String()
+	pipelineIDStr := pipelineID
 	auditErr := s.auditRepo.LogAction(
 		ctx,
-		workspaceID.String(),
-		actorID.String(),
+		workspaceID,
+		actorID,
 		"delete",
 		"pipeline",
 		&pipelineIDStr,
@@ -456,7 +455,7 @@ func (s *PipelineService) DeletePipeline(ctx context.Context, workspaceID, pipel
 
 // ListStages retrieves all stages for a pipeline.
 // Permission: all workspace members can list stages.
-func (s *PipelineService) ListStages(ctx context.Context, workspaceID, pipelineID, actorID uuid.UUID) ([]domain.PipelineStage, error) {
+func (s *PipelineService) ListStages(ctx context.Context, workspaceID, pipelineID, actorID string) ([]domain.PipelineStage, error) {
 	// Fetch user's role in this workspace from database
 	role, err := s.workspaceRepo.GetMemberRole(ctx, actorID, workspaceID)
 	if err != nil {
@@ -477,7 +476,7 @@ func (s *PipelineService) ListStages(ctx context.Context, workspaceID, pipelineI
 		return nil, fmt.Errorf("get pipeline: %w", err)
 	}
 
-	stages, err := s.pipelineRepo.ListStagesByPipeline(ctx, pipelineID)
+	stages, err := s.pipelineRepo.ListStagesByPipeline(ctx, workspaceID, &pipelineID)
 	if err != nil {
 		return nil, fmt.Errorf("list stages: %w", err)
 	}
@@ -488,7 +487,7 @@ func (s *PipelineService) ListStages(ctx context.Context, workspaceID, pipelineI
 // CreateStage creates a new stage in a pipeline.
 // Permission: only admin and manager can create stages.
 // Auto-assigns orderIndex as max+1.
-func (s *PipelineService) CreateStage(ctx context.Context, workspaceID, pipelineID, actorID uuid.UUID, req *domain.CreateStageRequest) (*domain.PipelineStage, error) {
+func (s *PipelineService) CreateStage(ctx context.Context, workspaceID, pipelineID, actorID string, req *domain.CreateStageRequest) (*domain.PipelineStage, error) {
 	// Fetch user's role in this workspace from database
 	role, err := s.workspaceRepo.GetMemberRole(ctx, actorID, workspaceID)
 	if err != nil {
@@ -522,10 +521,11 @@ func (s *PipelineService) CreateStage(ctx context.Context, workspaceID, pipeline
 	}
 
 	stage := &domain.PipelineStage{
-		ID:         uuid.New(),
-		PipelineID: pipelineID,
+		ID:         generateID(),
+		PipelineID: &pipelineID,
+		WorkspaceID: workspaceID,
 		Name:       req.Name,
-		StageGroup: *req.StageGroup,
+		Group:      *req.StageGroup,
 		OrderIndex: maxOrder + 1,
 	}
 
@@ -535,8 +535,8 @@ func (s *PipelineService) CreateStage(ctx context.Context, workspaceID, pipeline
 	if req.Probability != nil {
 		stage.Probability = *req.Probability
 	}
-	if req.AutoArchiveAfterDays != nil {
-		stage.AutoArchiveAfterDays = req.AutoArchiveAfterDays
+	if req.AutoArchiveDays != nil {
+		stage.AutoArchiveDays = req.AutoArchiveDays
 	}
 
 	err = s.pipelineRepo.CreateStage(ctx, stage)
@@ -545,11 +545,11 @@ func (s *PipelineService) CreateStage(ctx context.Context, workspaceID, pipeline
 	}
 
 	// Audit: log stage creation
-	stageIDStr := stage.ID.String()
+	stageIDStr := stage.ID
 	auditErr := s.auditRepo.LogAction(
 		ctx,
-		workspaceID.String(),
-		actorID.String(),
+		workspaceID,
+		actorID,
 		"create",
 		"pipeline_stage",
 		&stageIDStr,
@@ -566,7 +566,7 @@ func (s *PipelineService) CreateStage(ctx context.Context, workspaceID, pipeline
 
 // UpdateStage updates a stage with RBAC validation.
 // Permission: only admin and manager can update stages.
-func (s *PipelineService) UpdateStage(ctx context.Context, workspaceID, stageID, actorID uuid.UUID, req *domain.UpdateStageRequest) (*domain.PipelineStage, error) {
+func (s *PipelineService) UpdateStage(ctx context.Context, workspaceID, stageID, actorID string, req *domain.UpdateStageRequest) (*domain.PipelineStage, error) {
 	// Fetch user's role in this workspace from database
 	role, err := s.workspaceRepo.GetMemberRole(ctx, actorID, workspaceID)
 	if err != nil {
@@ -587,7 +587,7 @@ func (s *PipelineService) UpdateStage(ctx context.Context, workspaceID, stageID,
 		return nil, fmt.Errorf("get stage: %w", err)
 	}
 
-	_, err = s.pipelineRepo.Get(ctx, workspaceID, stage.PipelineID)
+	_, err = s.pipelineRepo.Get(ctx, workspaceID, *stage.PipelineID)
 	if err != nil {
 		return nil, fmt.Errorf("get pipeline: %w", err)
 	}
@@ -604,11 +604,11 @@ func (s *PipelineService) UpdateStage(ctx context.Context, workspaceID, stageID,
 	}
 
 	// Audit: log stage update
-	stageIDStr := stageID.String()
+	stageIDStr := stageID
 	auditErr := s.auditRepo.LogAction(
 		ctx,
-		workspaceID.String(),
-		actorID.String(),
+		workspaceID,
+		actorID,
 		"update",
 		"pipeline_stage",
 		&stageIDStr,
@@ -625,7 +625,7 @@ func (s *PipelineService) UpdateStage(ctx context.Context, workspaceID, stageID,
 
 // DeleteStage soft deletes a stage with RBAC validation.
 // Permission: only admin and manager can delete stages.
-func (s *PipelineService) DeleteStage(ctx context.Context, workspaceID, stageID, actorID uuid.UUID) error {
+func (s *PipelineService) DeleteStage(ctx context.Context, workspaceID, stageID, actorID string) error {
 	// Fetch user's role in this workspace from database
 	role, err := s.workspaceRepo.GetMemberRole(ctx, actorID, workspaceID)
 	if err != nil {
@@ -646,7 +646,7 @@ func (s *PipelineService) DeleteStage(ctx context.Context, workspaceID, stageID,
 		return fmt.Errorf("get stage: %w", err)
 	}
 
-	_, err = s.pipelineRepo.Get(ctx, workspaceID, stage.PipelineID)
+	_, err = s.pipelineRepo.Get(ctx, workspaceID, *stage.PipelineID)
 	if err != nil {
 		return fmt.Errorf("get pipeline: %w", err)
 	}
@@ -656,12 +656,11 @@ func (s *PipelineService) DeleteStage(ctx context.Context, workspaceID, stageID,
 		return fmt.Errorf("delete stage: %w", err)
 	}
 
-	// Audit: log stage deletion
-	stageIDStr := stageID.String()
+	stageIDStr := stageID
 	auditErr := s.auditRepo.LogAction(
 		ctx,
-		workspaceID.String(),
-		actorID.String(),
+		workspaceID,
+		actorID,
 		"delete",
 		"pipeline_stage",
 		&stageIDStr,
@@ -681,7 +680,7 @@ func (s *PipelineService) DeleteStage(ctx context.Context, workspaceID, stageID,
 // CreateDefaultPipeline creates a default "Vendas Padrão" pipeline with 5 standard stages.
 // This is called automatically when a workspace is created.
 // Permission: internal service method (no RBAC check).
-func (s *PipelineService) CreateDefaultPipeline(ctx context.Context, workspaceID uuid.UUID, ownerID uuid.UUID) (*domain.Pipeline, error) {
+func (s *PipelineService) CreateDefaultPipeline(ctx context.Context, workspaceID string, ownerID string) (*domain.Pipeline, error) {
 	req := &domain.CreatePipelineWithStagesRequest{
 		Pipeline: domain.CreatePipelineRequest{
 			Name:         "Vendas Padrão",
@@ -733,7 +732,7 @@ func (s *PipelineService) CreateDefaultPipeline(ctx context.Context, workspaceID
 
 	// Create pipeline
 	pipeline := &domain.Pipeline{
-		ID:           uuid.New(),
+		ID:           generateID(),
 		WorkspaceID:  workspaceID,
 		Name:         req.Pipeline.Name,
 		Description:  req.Pipeline.Description,
@@ -751,14 +750,17 @@ func (s *PipelineService) CreateDefaultPipeline(ctx context.Context, workspaceID
 	// Create stages
 	for i, stageReq := range req.Stages {
 		stage := &domain.PipelineStage{
-			ID:                   uuid.New(),
-			PipelineID:           pipeline.ID,
-			Name:                 stageReq.Name,
-			Description:          stageReq.Description,
-			StageGroup:           *stageReq.StageGroup,
-			OrderIndex:           i + 1,
-			Probability:          *stageReq.Probability,
-			AutoArchiveAfterDays: stageReq.AutoArchiveAfterDays,
+			ID:              generateID(),
+			PipelineID:      &pipeline.ID,
+			WorkspaceID:     workspaceID,
+			Name:            stageReq.Name,
+			Description:     stageReq.Description,
+			Group:           *stageReq.StageGroup, // Renamed from StageGroup to Group
+			OrderIndex:      i + 1,
+			Color:           stageReq.Color,
+			IsLocked:        false,
+			Probability:     *stageReq.Probability,
+			AutoArchiveDays: stageReq.AutoArchiveDays,
 		}
 
 		err = s.pipelineRepo.CreateStage(ctx, stage)
@@ -788,7 +790,7 @@ func (s *PipelineService) CreateDefaultPipeline(ctx context.Context, workspaceID
 
 // SeedDefaultPipeline is a manual endpoint to create default pipeline (fallback for repairs).
 // Permission: only admin can seed default pipeline.
-func (s *PipelineService) SeedDefaultPipeline(ctx context.Context, workspaceID, actorID uuid.UUID) (*domain.Pipeline, error) {
+func (s *PipelineService) SeedDefaultPipeline(ctx context.Context, workspaceID, actorID string) (*domain.Pipeline, error) {
 	// Fetch user's role in this workspace from database
 	role, err := s.workspaceRepo.GetMemberRole(ctx, actorID, workspaceID)
 	if err != nil {
@@ -809,13 +811,13 @@ func (s *PipelineService) SeedDefaultPipeline(ctx context.Context, workspaceID, 
 	}
 
 	// Audit: log seeding action
-	pipelineIDStr := pipeline.ID.String()
+	pipelineIDStr := pipeline.ID
 	auditErr := s.auditRepo.LogAction(
 		ctx,
-		workspaceID.String(),
-		actorID.String(),
+		workspaceID,
+		actorID,
 		"seed",
-		"default_pipeline",
+		"pipeline",
 		&pipelineIDStr,
 		nil,
 		"",

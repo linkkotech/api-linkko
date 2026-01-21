@@ -119,7 +119,7 @@ func (h *ContactHandler) GetContact(w http.ResponseWriter, r *http.Request) {
 	}
 
 	log.Info(ctx, "contact fetched successfully",
-		zap.String("contactId", contact.ID.String()),
+		zap.String("contactId", contact.ID),
 	)
 
 	writeJSON(w, http.StatusOK, contact)
@@ -167,11 +167,11 @@ func (h *ContactHandler) CreateContact(w http.ResponseWriter, r *http.Request) {
 	}
 
 	log.Info(ctx, "contact created successfully",
-		zap.String("contactId", contact.ID.String()),
+		zap.String("contactId", contact.ID),
 		zap.String("email", contact.Email),
 	)
 
-	w.Header().Set("Location", "/v1/workspaces/"+workspaceID+"/contacts/"+contact.ID.String())
+	w.Header().Set("Location", "/v1/workspaces/"+workspaceID+"/contacts/"+contact.ID)
 	writeJSON(w, http.StatusCreated, contact)
 }
 
@@ -218,7 +218,7 @@ func (h *ContactHandler) UpdateContact(w http.ResponseWriter, r *http.Request) {
 	}
 
 	log.Info(ctx, "contact updated successfully",
-		zap.String("contactId", contact.ID.String()),
+		zap.String("contactId", contact.ID),
 	)
 
 	writeJSON(w, http.StatusOK, contact)
@@ -247,7 +247,7 @@ func (h *ContactHandler) DeleteContact(w http.ResponseWriter, r *http.Request) {
 	)
 
 	// Service now fetches role from database internally and validates delete permission
-	err = h.service.DeleteContact(ctx, workspaceID, contactID, actorID)
+	err := h.service.DeleteContact(ctx, workspaceID, contactID, actorID)
 	if err != nil {
 		handleServiceError(w, ctx, log, err)
 		return

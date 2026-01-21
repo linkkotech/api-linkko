@@ -9,7 +9,101 @@ import (
 	"fmt"
 
 	"github.com/jackc/pgx/v5/pgtype"
+	"time"
 )
+
+type ActivityType string
+
+const (
+	ActivityTypeNOTE            ActivityType = "NOTE"
+	ActivityTypeTASK            ActivityType = "TASK"
+	ActivityTypeEMAIL           ActivityType = "EMAIL"
+	ActivityTypeCALL            ActivityType = "CALL"
+	ActivityTypeMEETING         ActivityType = "MEETING"
+	ActivityTypeMESSAGE         ActivityType = "MESSAGE"
+	ActivityTypeLIFECYCLECHANGE ActivityType = "LIFECYCLE_CHANGE"
+)
+
+func (e *ActivityType) Scan(src interface{}) error {
+	switch s := src.(type) {
+	case []byte:
+		*e = ActivityType(s)
+	case string:
+		*e = ActivityType(s)
+	default:
+		return fmt.Errorf("unsupported scan type for ActivityType: %T", src)
+	}
+	return nil
+}
+
+type NullActivityType struct {
+	ActivityType ActivityType `json:"ActivityType"`
+	Valid        bool         `json:"valid"` // Valid is true if ActivityType is not NULL
+}
+
+// Scan implements the Scanner interface.
+func (ns *NullActivityType) Scan(value interface{}) error {
+	if value == nil {
+		ns.ActivityType, ns.Valid = "", false
+		return nil
+	}
+	ns.Valid = true
+	return ns.ActivityType.Scan(value)
+}
+
+// Value implements the driver Valuer interface.
+func (ns NullActivityType) Value() (driver.Value, error) {
+	if !ns.Valid {
+		return nil, nil
+	}
+	return string(ns.ActivityType), nil
+}
+
+type AttendeeStatus string
+
+const (
+	AttendeeStatusINVITED   AttendeeStatus = "INVITED"
+	AttendeeStatusACCEPTED  AttendeeStatus = "ACCEPTED"
+	AttendeeStatusDECLINED  AttendeeStatus = "DECLINED"
+	AttendeeStatusTENTATIVE AttendeeStatus = "TENTATIVE"
+	AttendeeStatusATTENDED  AttendeeStatus = "ATTENDED"
+	AttendeeStatusNOSHOW    AttendeeStatus = "NO_SHOW"
+)
+
+func (e *AttendeeStatus) Scan(src interface{}) error {
+	switch s := src.(type) {
+	case []byte:
+		*e = AttendeeStatus(s)
+	case string:
+		*e = AttendeeStatus(s)
+	default:
+		return fmt.Errorf("unsupported scan type for AttendeeStatus: %T", src)
+	}
+	return nil
+}
+
+type NullAttendeeStatus struct {
+	AttendeeStatus AttendeeStatus `json:"AttendeeStatus"`
+	Valid          bool           `json:"valid"` // Valid is true if AttendeeStatus is not NULL
+}
+
+// Scan implements the Scanner interface.
+func (ns *NullAttendeeStatus) Scan(value interface{}) error {
+	if value == nil {
+		ns.AttendeeStatus, ns.Valid = "", false
+		return nil
+	}
+	ns.Valid = true
+	return ns.AttendeeStatus.Scan(value)
+}
+
+// Value implements the driver Valuer interface.
+func (ns NullAttendeeStatus) Value() (driver.Value, error) {
+	if !ns.Valid {
+		return nil, nil
+	}
+	return string(ns.AttendeeStatus), nil
+}
 
 type CompanyLifecycleStage string
 
@@ -189,6 +283,181 @@ func (ns NullDealStage) Value() (driver.Value, error) {
 	return string(ns.DealStage), nil
 }
 
+type EmailStatus string
+
+const (
+	EmailStatusDRAFT     EmailStatus = "DRAFT"
+	EmailStatusSENT      EmailStatus = "SENT"
+	EmailStatusDELIVERED EmailStatus = "DELIVERED"
+	EmailStatusOPENED    EmailStatus = "OPENED"
+	EmailStatusCLICKED   EmailStatus = "CLICKED"
+	EmailStatusBOUNCED   EmailStatus = "BOUNCED"
+)
+
+func (e *EmailStatus) Scan(src interface{}) error {
+	switch s := src.(type) {
+	case []byte:
+		*e = EmailStatus(s)
+	case string:
+		*e = EmailStatus(s)
+	default:
+		return fmt.Errorf("unsupported scan type for EmailStatus: %T", src)
+	}
+	return nil
+}
+
+type NullEmailStatus struct {
+	EmailStatus EmailStatus `json:"EmailStatus"`
+	Valid       bool        `json:"valid"` // Valid is true if EmailStatus is not NULL
+}
+
+// Scan implements the Scanner interface.
+func (ns *NullEmailStatus) Scan(value interface{}) error {
+	if value == nil {
+		ns.EmailStatus, ns.Valid = "", false
+		return nil
+	}
+	ns.Valid = true
+	return ns.EmailStatus.Scan(value)
+}
+
+// Value implements the driver Valuer interface.
+func (ns NullEmailStatus) Value() (driver.Value, error) {
+	if !ns.Valid {
+		return nil, nil
+	}
+	return string(ns.EmailStatus), nil
+}
+
+type MeetingType string
+
+const (
+	MeetingTypeCALL     MeetingType = "CALL"
+	MeetingTypeVIDEO    MeetingType = "VIDEO"
+	MeetingTypeINPERSON MeetingType = "IN_PERSON"
+)
+
+func (e *MeetingType) Scan(src interface{}) error {
+	switch s := src.(type) {
+	case []byte:
+		*e = MeetingType(s)
+	case string:
+		*e = MeetingType(s)
+	default:
+		return fmt.Errorf("unsupported scan type for MeetingType: %T", src)
+	}
+	return nil
+}
+
+type NullMeetingType struct {
+	MeetingType MeetingType `json:"MeetingType"`
+	Valid       bool        `json:"valid"` // Valid is true if MeetingType is not NULL
+}
+
+// Scan implements the Scanner interface.
+func (ns *NullMeetingType) Scan(value interface{}) error {
+	if value == nil {
+		ns.MeetingType, ns.Valid = "", false
+		return nil
+	}
+	ns.Valid = true
+	return ns.MeetingType.Scan(value)
+}
+
+// Value implements the driver Valuer interface.
+func (ns NullMeetingType) Value() (driver.Value, error) {
+	if !ns.Valid {
+		return nil, nil
+	}
+	return string(ns.MeetingType), nil
+}
+
+type MessageDirection string
+
+const (
+	MessageDirectionINBOUND  MessageDirection = "INBOUND"
+	MessageDirectionOUTBOUND MessageDirection = "OUTBOUND"
+)
+
+func (e *MessageDirection) Scan(src interface{}) error {
+	switch s := src.(type) {
+	case []byte:
+		*e = MessageDirection(s)
+	case string:
+		*e = MessageDirection(s)
+	default:
+		return fmt.Errorf("unsupported scan type for MessageDirection: %T", src)
+	}
+	return nil
+}
+
+type NullMessageDirection struct {
+	MessageDirection MessageDirection `json:"MessageDirection"`
+	Valid            bool             `json:"valid"` // Valid is true if MessageDirection is not NULL
+}
+
+// Scan implements the Scanner interface.
+func (ns *NullMessageDirection) Scan(value interface{}) error {
+	if value == nil {
+		ns.MessageDirection, ns.Valid = "", false
+		return nil
+	}
+	ns.Valid = true
+	return ns.MessageDirection.Scan(value)
+}
+
+// Value implements the driver Valuer interface.
+func (ns NullMessageDirection) Value() (driver.Value, error) {
+	if !ns.Valid {
+		return nil, nil
+	}
+	return string(ns.MessageDirection), nil
+}
+
+type MessageStatus string
+
+const (
+	MessageStatusSENT      MessageStatus = "SENT"
+	MessageStatusDELIVERED MessageStatus = "DELIVERED"
+	MessageStatusREAD      MessageStatus = "READ"
+	MessageStatusFAILED    MessageStatus = "FAILED"
+)
+
+func (e *MessageStatus) Scan(src interface{}) error {
+	switch s := src.(type) {
+	case []byte:
+		*e = MessageStatus(s)
+	case string:
+		*e = MessageStatus(s)
+	default:
+		return fmt.Errorf("unsupported scan type for MessageStatus: %T", src)
+	}
+	return nil
+}
+
+type NullMessageStatus struct {
+	MessageStatus MessageStatus `json:"MessageStatus"`
+	Valid         bool          `json:"valid"` // Valid is true if MessageStatus is not NULL
+}
+
+// Scan implements the Scanner interface.
+func (ns *NullMessageStatus) Scan(value interface{}) error {
+	if value == nil {
+		ns.MessageStatus, ns.Valid = "", false
+		return nil
+	}
+	ns.Valid = true
+	return ns.MessageStatus.Scan(value)
+}
+
+// Value implements the driver Valuer interface.
+func (ns NullMessageStatus) Value() (driver.Value, error) {
+	if !ns.Valid {
+		return nil, nil
+	}
+	return string(ns.MessageStatus), nil
+}
+
 type PipelineType string
 
 const (
@@ -231,6 +500,188 @@ func (ns NullPipelineType) Value() (driver.Value, error) {
 		return nil, nil
 	}
 	return string(ns.PipelineType), nil
+}
+
+type PortfolioCategoryEnum string
+
+const (
+	PortfolioCategoryEnumPRODUCT    PortfolioCategoryEnum = "PRODUCT"
+	PortfolioCategoryEnumSERVICE    PortfolioCategoryEnum = "SERVICE"
+	PortfolioCategoryEnumREALESTATE PortfolioCategoryEnum = "REAL_ESTATE"
+	PortfolioCategoryEnumLODGING    PortfolioCategoryEnum = "LODGING"
+	PortfolioCategoryEnumEVENT      PortfolioCategoryEnum = "EVENT"
+)
+
+func (e *PortfolioCategoryEnum) Scan(src interface{}) error {
+	switch s := src.(type) {
+	case []byte:
+		*e = PortfolioCategoryEnum(s)
+	case string:
+		*e = PortfolioCategoryEnum(s)
+	default:
+		return fmt.Errorf("unsupported scan type for PortfolioCategoryEnum: %T", src)
+	}
+	return nil
+}
+
+type NullPortfolioCategoryEnum struct {
+	PortfolioCategoryEnum PortfolioCategoryEnum `json:"PortfolioCategoryEnum"`
+	Valid                 bool                  `json:"valid"` // Valid is true if PortfolioCategoryEnum is not NULL
+}
+
+// Scan implements the Scanner interface.
+func (ns *NullPortfolioCategoryEnum) Scan(value interface{}) error {
+	if value == nil {
+		ns.PortfolioCategoryEnum, ns.Valid = "", false
+		return nil
+	}
+	ns.Valid = true
+	return ns.PortfolioCategoryEnum.Scan(value)
+}
+
+// Value implements the driver Valuer interface.
+func (ns NullPortfolioCategoryEnum) Value() (driver.Value, error) {
+	if !ns.Valid {
+		return nil, nil
+	}
+	return string(ns.PortfolioCategoryEnum), nil
+}
+
+type PortfolioStatus string
+
+const (
+	PortfolioStatusDRAFT       PortfolioStatus = "DRAFT"
+	PortfolioStatusACTIVE      PortfolioStatus = "ACTIVE"
+	PortfolioStatusINACTIVE    PortfolioStatus = "INACTIVE"
+	PortfolioStatusUNAVAILABLE PortfolioStatus = "UNAVAILABLE"
+	PortfolioStatusARCHIVED    PortfolioStatus = "ARCHIVED"
+)
+
+func (e *PortfolioStatus) Scan(src interface{}) error {
+	switch s := src.(type) {
+	case []byte:
+		*e = PortfolioStatus(s)
+	case string:
+		*e = PortfolioStatus(s)
+	default:
+		return fmt.Errorf("unsupported scan type for PortfolioStatus: %T", src)
+	}
+	return nil
+}
+
+type NullPortfolioStatus struct {
+	PortfolioStatus PortfolioStatus `json:"PortfolioStatus"`
+	Valid           bool            `json:"valid"` // Valid is true if PortfolioStatus is not NULL
+}
+
+// Scan implements the Scanner interface.
+func (ns *NullPortfolioStatus) Scan(value interface{}) error {
+	if value == nil {
+		ns.PortfolioStatus, ns.Valid = "", false
+		return nil
+	}
+	ns.Valid = true
+	return ns.PortfolioStatus.Scan(value)
+}
+
+// Value implements the driver Valuer interface.
+func (ns NullPortfolioStatus) Value() (driver.Value, error) {
+	if !ns.Valid {
+		return nil, nil
+	}
+	return string(ns.PortfolioStatus), nil
+}
+
+type PortfolioVertical string
+
+const (
+	PortfolioVerticalGENERAL      PortfolioVertical = "GENERAL"
+	PortfolioVerticalHEALTHCARE   PortfolioVertical = "HEALTHCARE"
+	PortfolioVerticalAESTHETICS   PortfolioVertical = "AESTHETICS"
+	PortfolioVerticalBEAUTY       PortfolioVertical = "BEAUTY"
+	PortfolioVerticalRETAIL       PortfolioVertical = "RETAIL"
+	PortfolioVerticalREALESTATE   PortfolioVertical = "REAL_ESTATE"
+	PortfolioVerticalHOSTING      PortfolioVertical = "HOSTING"
+	PortfolioVerticalEVENTS       PortfolioVertical = "EVENTS"
+	PortfolioVerticalGENERALLOCAL PortfolioVertical = "GENERAL_LOCAL"
+	PortfolioVerticalB2BCORPORATE PortfolioVertical = "B2B_CORPORATE"
+)
+
+func (e *PortfolioVertical) Scan(src interface{}) error {
+	switch s := src.(type) {
+	case []byte:
+		*e = PortfolioVertical(s)
+	case string:
+		*e = PortfolioVertical(s)
+	default:
+		return fmt.Errorf("unsupported scan type for PortfolioVertical: %T", src)
+	}
+	return nil
+}
+
+type NullPortfolioVertical struct {
+	PortfolioVertical PortfolioVertical `json:"PortfolioVertical"`
+	Valid             bool              `json:"valid"` // Valid is true if PortfolioVertical is not NULL
+}
+
+// Scan implements the Scanner interface.
+func (ns *NullPortfolioVertical) Scan(value interface{}) error {
+	if value == nil {
+		ns.PortfolioVertical, ns.Valid = "", false
+		return nil
+	}
+	ns.Valid = true
+	return ns.PortfolioVertical.Scan(value)
+}
+
+// Value implements the driver Valuer interface.
+func (ns NullPortfolioVertical) Value() (driver.Value, error) {
+	if !ns.Valid {
+		return nil, nil
+	}
+	return string(ns.PortfolioVertical), nil
+}
+
+type PortfolioVisibility string
+
+const (
+	PortfolioVisibilityPUBLIC   PortfolioVisibility = "PUBLIC"
+	PortfolioVisibilityINTERNAL PortfolioVisibility = "INTERNAL"
+)
+
+func (e *PortfolioVisibility) Scan(src interface{}) error {
+	switch s := src.(type) {
+	case []byte:
+		*e = PortfolioVisibility(s)
+	case string:
+		*e = PortfolioVisibility(s)
+	default:
+		return fmt.Errorf("unsupported scan type for PortfolioVisibility: %T", src)
+	}
+	return nil
+}
+
+type NullPortfolioVisibility struct {
+	PortfolioVisibility PortfolioVisibility `json:"PortfolioVisibility"`
+	Valid               bool                `json:"valid"` // Valid is true if PortfolioVisibility is not NULL
+}
+
+// Scan implements the Scanner interface.
+func (ns *NullPortfolioVisibility) Scan(value interface{}) error {
+	if value == nil {
+		ns.PortfolioVisibility, ns.Valid = "", false
+		return nil
+	}
+	ns.Valid = true
+	return ns.PortfolioVisibility.Scan(value)
+}
+
+// Value implements the driver Valuer interface.
+func (ns NullPortfolioVisibility) Value() (driver.Value, error) {
+	if !ns.Valid {
+		return nil, nil
+	}
+	return string(ns.PortfolioVisibility), nil
 }
 
 type Priority string
@@ -455,6 +906,19 @@ func (ns NullTaskType) Value() (driver.Value, error) {
 	return string(ns.TaskType), nil
 }
 
+type Activity struct {
+	ID           string           `json:"id"`
+	WorkspaceId  string           `json:"workspaceId"`
+	CompanyId    *string          `json:"companyId"`
+	ContactId    *string          `json:"contactId"`
+	DealId       *string          `json:"dealId"`
+	ActivityType ActivityType     `json:"activityType"`
+	ActivityId   *string          `json:"activityId"`
+	UserId       string           `json:"userId"`
+	Metadata     []byte           `json:"metadata"`
+	CreatedAt    pgtype.Timestamp `json:"createdAt"`
+}
+
 type AdminRole struct {
 	ID   string `json:"id"`
 	Name string `json:"name"`
@@ -471,6 +935,20 @@ type AuditLog struct {
 	IpAddress   *string          `json:"ipAddress"`
 	UserAgent   *string          `json:"userAgent"`
 	CreatedAt   pgtype.Timestamp `json:"createdAt"`
+}
+
+type Call struct {
+	ID           string           `json:"id"`
+	WorkspaceId  string           `json:"workspaceId"`
+	ContactId    string           `json:"contactId"`
+	CompanyId    *string          `json:"companyId"`
+	Direction    MessageDirection `json:"direction"`
+	Duration     *int32           `json:"duration"`
+	RecordingUrl *string          `json:"recordingUrl"`
+	Summary      *string          `json:"summary"`
+	UserId       string           `json:"userId"`
+	CalledAt     pgtype.Timestamp `json:"calledAt"`
+	CreatedAt    pgtype.Timestamp `json:"createdAt"`
 }
 
 type Company struct {
@@ -584,12 +1062,42 @@ type Deal struct {
 	UpdatedById       *string          `json:"updatedById"`
 }
 
+type DealStageHistory struct {
+	ID          string           `json:"id"`
+	WorkspaceId string           `json:"workspaceId"`
+	DealId      string           `json:"dealId"`
+	FromStage   DealStage        `json:"fromStage"`
+	ToStage     DealStage        `json:"toStage"`
+	Reason      *string          `json:"reason"`
+	UserId      string           `json:"userId"`
+	CreatedAt   pgtype.Timestamp `json:"createdAt"`
+}
+
 type DealTag struct {
 	ID        string           `json:"id"`
 	DealId    string           `json:"dealId"`
 	TagId     string           `json:"tagId"`
 	UserId    string           `json:"userId"`
 	CreatedAt pgtype.Timestamp `json:"createdAt"`
+}
+
+type Email struct {
+	ID          string           `json:"id"`
+	WorkspaceId string           `json:"workspaceId"`
+	ContactId   string           `json:"contactId"`
+	CompanyId   *string          `json:"companyId"`
+	Subject     string           `json:"subject"`
+	Body        string           `json:"body"`
+	FromEmail   string           `json:"fromEmail"`
+	ToEmail     string           `json:"toEmail"`
+	CcEmails    []string         `json:"ccEmails"`
+	BccEmails   []string         `json:"bccEmails"`
+	Status      EmailStatus      `json:"status"`
+	SentAt      pgtype.Timestamp `json:"sentAt"`
+	OpenedAt    pgtype.Timestamp `json:"openedAt"`
+	ClickedAt   pgtype.Timestamp `json:"clickedAt"`
+	UserId      string           `json:"userId"`
+	CreatedAt   pgtype.Timestamp `json:"createdAt"`
 }
 
 type IdempotencyKey struct {
@@ -599,6 +1107,63 @@ type IdempotencyKey struct {
 	Response    []byte           `json:"response"`
 	CreatedAt   pgtype.Timestamp `json:"createdAt"`
 	ExpiresAt   pgtype.Timestamp `json:"expiresAt"`
+}
+
+type Meeting struct {
+	ID          string           `json:"id"`
+	WorkspaceId string           `json:"workspaceId"`
+	Title       string           `json:"title"`
+	Description *string          `json:"description"`
+	MeetingType MeetingType      `json:"meetingType"`
+	StartTime   pgtype.Timestamp `json:"startTime"`
+	EndTime     pgtype.Timestamp `json:"endTime"`
+	Location    *string          `json:"location"`
+	MeetingUrl  *string          `json:"meetingUrl"`
+	ExternalId  *string          `json:"externalId"`
+	UserId      string           `json:"userId"`
+	DeletedAt   pgtype.Timestamp `json:"deletedAt"`
+	CreatedAt   pgtype.Timestamp `json:"createdAt"`
+	UpdatedAt   pgtype.Timestamp `json:"updatedAt"`
+}
+
+type MeetingAttendee struct {
+	ID                 string           `json:"id"`
+	MeetingId          string           `json:"meetingId"`
+	ContactId          *string          `json:"contactId"`
+	Email              string           `json:"email"`
+	Name               *string          `json:"name"`
+	Status             AttendeeStatus   `json:"status"`
+	RespondedAt        pgtype.Timestamp `json:"respondedAt"`
+	ExternalAttendeeId *string          `json:"externalAttendeeId"`
+	CreatedAt          pgtype.Timestamp `json:"createdAt"`
+}
+
+type Message struct {
+	ID          string           `json:"id"`
+	WorkspaceId string           `json:"workspaceId"`
+	ContactId   string           `json:"contactId"`
+	CompanyId   *string          `json:"companyId"`
+	Direction   MessageDirection `json:"direction"`
+	Platform    string           `json:"platform"`
+	Content     string           `json:"content"`
+	Status      MessageStatus    `json:"status"`
+	SentAt      pgtype.Timestamp `json:"sentAt"`
+	UserId      string           `json:"userId"`
+	CreatedAt   pgtype.Timestamp `json:"createdAt"`
+}
+
+type Note struct {
+	ID          string           `json:"id"`
+	WorkspaceId string           `json:"workspaceId"`
+	CompanyId   *string          `json:"companyId"`
+	ContactId   *string          `json:"contactId"`
+	DealId      *string          `json:"dealId"`
+	Content     string           `json:"content"`
+	IsPinned    bool             `json:"isPinned"`
+	UserId      string           `json:"userId"`
+	DeletedAt   pgtype.Timestamp `json:"deletedAt"`
+	CreatedAt   pgtype.Timestamp `json:"createdAt"`
+	UpdatedAt   pgtype.Timestamp `json:"updatedAt"`
 }
 
 type Organization struct {
@@ -632,6 +1197,28 @@ type PipelineStage struct {
 	IsLocked    bool             `json:"isLocked"`
 	CreatedAt   pgtype.Timestamp `json:"createdAt"`
 	UpdatedAt   pgtype.Timestamp `json:"updatedAt"`
+}
+
+type PortfolioItem struct {
+	ID          string                `json:"id"`
+	WorkspaceId string                `json:"workspaceId"`
+	Name        string                `json:"name"`
+	Description *string               `json:"description"`
+	Sku         *string               `json:"sku"`
+	Category    PortfolioCategoryEnum `json:"category"`
+	Vertical    PortfolioVertical     `json:"vertical"`
+	Status      PortfolioStatus       `json:"status"`
+	Visibility  PortfolioVisibility   `json:"visibility"`
+	BasePrice   float64               `json:"basePrice"`
+	Currency    string                `json:"currency"`
+	ImageUrl    *string               `json:"imageUrl"`
+	Metadata    []byte                `json:"metadata"`
+	Tags        []string              `json:"tags"`
+	CreatedById string                `json:"createdById"`
+	UpdatedById *string               `json:"updatedById"`
+	CreatedAt   pgtype.Timestamp      `json:"createdAt"`
+	UpdatedAt   pgtype.Timestamp      `json:"updatedAt"`
+	DeletedAt   **time.Time           `json:"deletedAt"`
 }
 
 type Tag struct {

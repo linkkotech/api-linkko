@@ -16,6 +16,7 @@ const (
 	StageGroupActive StageGroup = "ACTIVE" // Deal is in progress
 	StageGroupDone   StageGroup = "DONE"   // Deal completed
 	StageGroupClosed StageGroup = "CLOSED" // Deal closed (won or lost)
+	StageGroupWon    StageGroup = "WON"    // Deal won (alias for CLOSED/DONE in some contexts)
 )
 
 // IsValid valida se o valor de StageGroup é válido.
@@ -68,6 +69,7 @@ const (
 	PipelineTypeDeal    PipelineType = "DEAL"    // Standard B2B sales
 	PipelineTypeTicket  PipelineType = "TICKET"  // Support tickets
 	PipelineTypeContact PipelineType = "CONTACT" // Contact nurturing
+	PipelineTypeSales   PipelineType = "DEAL"    // Alias for DEAL
 )
 
 // IsValid valida se o valor de PipelineType é válido.
@@ -124,7 +126,10 @@ type Pipeline struct {
 	Description *string `json:"description,omitempty" db:"description"`
 
 	// Configuração - schema real só tem isDefault
-	IsDefault bool `json:"isDefault" db:"isDefault"`
+	PipelineType PipelineType `json:"pipelineType" db:"pipeline_type"` // Added for service compatibility
+	IsActive     bool         `json:"isActive" db:"is_active"`         // Added for service compatibility
+	IsDefault    bool         `json:"isDefault" db:"isDefault"`
+	OwnerID      string       `json:"ownerId" db:"owner_id"` // Added for service compatibility
 
 	// Timestamps
 	CreatedAt time.Time  `json:"createdAt" db:"createdAt"`
@@ -148,11 +153,13 @@ type PipelineStage struct {
 	Description *string `json:"description,omitempty" db:"description"`
 
 	// Configuração - schema real usa group, type, color, isLocked
-	Group      StageGroup   `json:"group" db:"group"`
-	Type       PipelineType `json:"type" db:"type"`
-	OrderIndex int          `json:"orderIndex" db:"orderIndex"`
-	Color      *string      `json:"color,omitempty" db:"color"`
-	IsLocked   bool         `json:"isLocked" db:"isLocked"`
+	Group           StageGroup   `json:"group" db:"group"`
+	Type            PipelineType `json:"type" db:"type"`
+	OrderIndex      int          `json:"orderIndex" db:"orderIndex"`
+	Color           *string      `json:"color,omitempty" db:"color"`
+	IsLocked        bool         `json:"isLocked" db:"isLocked"`
+	Probability     int          `json:"probability" db:"probability"`
+	AutoArchiveDays *int         `json:"autoArchiveDays,omitempty" db:"auto_archive_after_days"`
 
 	// Timestamps
 	CreatedAt time.Time  `json:"createdAt" db:"createdAt"`
@@ -167,8 +174,11 @@ type CreatePipelineRequest struct {
 	Name string `json:"name" validate:"required,min=1,max=255"`
 
 	// Dados opcionais
-	Description *string `json:"description,omitempty" validate:"omitempty,max=5000"`
-	IsDefault   *bool   `json:"isDefault,omitempty"`
+	Description  *string       `json:"description,omitempty" validate:"omitempty,max=5000"`
+	IsDefault    *bool         `json:"isDefault,omitempty"`
+	PipelineType *PipelineType `json:"pipelineType,omitempty"`
+	IsActive     *bool         `json:"isActive,omitempty"`
+	OwnerID      *string       `json:"ownerId,omitempty"`
 }
 
 // CreatePipelineWithStagesRequest DTO para criar pipeline + stages em uma operação.
@@ -190,7 +200,8 @@ type CreateStageRequest struct {
 	StageGroup           *StageGroup `json:"stageGroup,omitempty" validate:"omitempty,oneof=OPEN ACTIVE DONE CLOSED"`
 	OrderIndex           *int        `json:"orderIndex,omitempty" validate:"omitempty,gte=0"`
 	Probability          *int        `json:"probability,omitempty" validate:"omitempty,gte=0,lte=100"`
-	AutoArchiveAfterDays *int        `json:"autoArchiveAfterDays,omitempty" validate:"omitempty,gte=1"`
+	AutoArchiveDays      *int        `json:"autoArchiveDays,omitempty" validate:"omitempty,gte=1"`
+	Color                *string     `json:"color,omitempty"`
 }
 
 // UpdatePipelineRequest DTO para atualização parcial de pipeline (PATCH semântico).

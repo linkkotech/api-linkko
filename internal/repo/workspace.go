@@ -7,7 +7,6 @@ import (
 
 	"linkko-api/internal/domain"
 
-	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
@@ -56,7 +55,7 @@ func NewWorkspaceRepository(pool *pgxpool.Pool) *WorkspaceRepository {
 //
 // Security: This method enforces multi-tenant isolation. A user cannot access
 // resources in a workspace they don't belong to.
-func (r *WorkspaceRepository) GetMemberRole(ctx context.Context, userID uuid.UUID, workspaceID uuid.UUID) (domain.Role, error) {
+func (r *WorkspaceRepository) GetMemberRole(ctx context.Context, userID string, workspaceID string) (domain.Role, error) {
 	query := `
 		SELECT "workspaceRoleId"
 		FROM "WorkspaceMember"
@@ -95,7 +94,7 @@ func (r *WorkspaceRepository) GetMemberRole(ctx context.Context, userID uuid.UUI
 //   - true if user has any role in the workspace
 //   - false if user is not a member
 //   - error for database failures
-func (r *WorkspaceRepository) IsMember(ctx context.Context, userID uuid.UUID, workspaceID uuid.UUID) (bool, error) {
+func (r *WorkspaceRepository) IsMember(ctx context.Context, userID string, workspaceID string) (bool, error) {
 	query := `
 		SELECT EXISTS(
 			SELECT 1
@@ -121,7 +120,7 @@ func (r *WorkspaceRepository) IsMember(ctx context.Context, userID uuid.UUID, wo
 
 // ListMembersByWorkspace retrieves all members of a workspace.
 // Useful for workspace member management UI.
-func (r *WorkspaceRepository) ListMembersByWorkspace(ctx context.Context, workspaceID uuid.UUID) ([]domain.WorkspaceMember, error) {
+func (r *WorkspaceRepository) ListMembersByWorkspace(ctx context.Context, workspaceID string) ([]domain.WorkspaceMember, error) {
 	query := `
 		SELECT 
 			"userId", "workspaceId", "workspaceRoleId",
@@ -161,7 +160,7 @@ func (r *WorkspaceRepository) ListMembersByWorkspace(ctx context.Context, worksp
 
 // ListWorkspacesByUser retrieves all workspaces a user is a member of.
 // Useful for workspace switcher UI or multi-workspace dashboards.
-func (r *WorkspaceRepository) ListWorkspacesByUser(ctx context.Context, userID uuid.UUID) ([]domain.WorkspaceMember, error) {
+func (r *WorkspaceRepository) ListWorkspacesByUser(ctx context.Context, userID string) ([]domain.WorkspaceMember, error) {
 	query := `
 		SELECT 
 			"userId", "workspaceId", "workspaceRoleId",

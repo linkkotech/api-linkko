@@ -68,6 +68,7 @@ const (
 	TaskStatusInProgress TaskStatus = "IN_PROGRESS"
 	TaskStatusDone       TaskStatus = "DONE"
 	TaskStatusCancelled  TaskStatus = "CANCELLED"
+	TaskStatusBacklog    TaskStatus = "BACKLOG" // Added for service compatibility
 )
 
 // IsValid valida se o valor de TaskStatus é válido.
@@ -121,6 +122,7 @@ const (
 	TaskTypeMeeting  TaskType = "MEETING"
 	TaskTypeFollowup TaskType = "FOLLOWUP"
 	TaskTypeOther    TaskType = "OTHER"
+	TaskTypeTask     TaskType = "TASK" // Added for service compatibility
 )
 
 // IsValid valida se o valor de TaskType é válido.

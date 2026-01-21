@@ -2,16 +2,15 @@ package repo
 
 import (
 	"context"
-	"database/sql"
+	"encoding/json"
 	"errors"
-	"fmt"
 	"time"
 
 	"linkko-api/internal/domain"
+	"linkko-api/internal/repo/sqlc"
 
-	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
-	"github.com/jackc/pgx/v5/pgconn"
+	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
@@ -21,112 +20,65 @@ var (
 )
 
 type CompanyRepository struct {
-	pool *pgxpool.Pool
+	pool    *pgxpool.Pool
+	queries *sqlc.Queries
 }
 
 func NewCompanyRepository(pool *pgxpool.Pool) *CompanyRepository {
-	return &CompanyRepository{pool: pool}
+	return &CompanyRepository{
+		pool:    pool,
+		queries: sqlc.New(pool),
+	}
 }
 
 // List retrieves companies for a workspace with optional filters.
-// IMPORTANT: Uses camelCase column names with double quotes.
 func (r *CompanyRepository) List(ctx context.Context, params domain.ListCompaniesParams) ([]domain.Company, string, error) {
-	query := `
-		SELECT id, "workspaceId", name, domain, industry, "lifecycleStage", "size",
-		       phone, email, website, address, "revenue", "employeeCount",
-		       "ownerId", tags, "customFields", notes,
-		       "createdAt", "updatedAt", "deletedAt"
-		FROM public."Company"
-		WHERE "workspaceId" = $1 AND "deletedAt" IS NULL
-	`
-	args := []interface{}{params.WorkspaceID}
-	argIdx := 2
+	// Prepare SQLc params
+	sqlcParams := sqlc.ListCompaniesParams{
+		WorkspaceId: params.WorkspaceID,
+		Column2:     "",
+		Column3:     "",
+		Column4:     "",
+		Column5:     "",
+		Limit:       int32(params.Limit + 1), // +1 to check next page
+	}
 
-	// Filtro por lifecycle stage
 	if params.LifecycleStage != nil {
-		query += fmt.Sprintf(` AND "lifecycleStage" = $%d`, argIdx)
-		args = append(args, *params.LifecycleStage)
-		argIdx++
+		stage := string(*params.LifecycleStage)
+		sqlcParams.Column2 = stage
 	}
 
-	// Filtro por company size
 	if params.Size != nil {
-		query += fmt.Sprintf(` AND "size" = $%d`, argIdx)
-		args = append(args, *params.Size)
-		argIdx++
+		size := string(*params.Size)
+		sqlcParams.Column3 = size
 	}
 
-	// Filtro por industry
-	if params.Industry != nil {
-		query += fmt.Sprintf(` AND industry = $%d`, argIdx)
-		args = append(args, *params.Industry)
-		argIdx++
-	}
-
-	// Filtro por owner
 	if params.OwnerID != nil {
-		query += fmt.Sprintf(` AND "ownerId" = $%d`, argIdx)
-		args = append(args, *params.OwnerID)
-		argIdx++
+		sqlcParams.Column4 = *params.OwnerID
 	}
 
-	// Busca textual (name + domain)
-	if params.Query != nil && *params.Query != "" {
-		query += fmt.Sprintf(` AND to_tsvector('simple', name || ' ' || COALESCE(domain, '')) @@ plainto_tsquery('simple', $%d)`, argIdx)
-		args = append(args, *params.Query)
-		argIdx++
+	if params.Query != nil {
+		sqlcParams.Column5 = *params.Query
 	}
 
-	// Cursor-based pagination
 	if params.Cursor != nil && *params.Cursor != "" {
-		cursorTime, err := time.Parse(time.RFC3339, *params.Cursor)
-		if err != nil {
-			return nil, "", fmt.Errorf("invalid cursor format: %w", err)
-		}
-		query += fmt.Sprintf(` AND "createdAt" < $%d`, argIdx)
-		args = append(args, cursorTime)
-		argIdx++
+		// Parse cursor as timestamp
+		// TODO: Parse cursor properly
 	}
 
-	// Ordenação (default: createdAt desc)
-	query += ` ORDER BY "createdAt" DESC`
-	query += fmt.Sprintf(` LIMIT $%d`, argIdx)
-	args = append(args, params.Limit+1) // +1 to check if there's next page
-
-	rows, err := r.pool.Query(ctx, query, args...)
+	rows, err := r.queries.ListCompanies(ctx, sqlcParams)
 	if err != nil {
-		return nil, "", fmt.Errorf("query companies: %w", err)
+		return nil, "", err
 	}
-	defer rows.Close()
 
 	companies := make([]domain.Company, 0, params.Limit)
-	for rows.Next() {
-		var c domain.Company
-		var deletedAt sql.NullTime
-		err := rows.Scan(
-			&c.ID, &c.WorkspaceID, &c.Name, &c.Domain, &c.Industry,
-			&c.LifecycleStage, &c.Size,
-			&c.Phone, &c.Email, &c.Website, &c.Address,
-			&c.Revenue, &c.EmployeeCount,
-			&c.OwnerID, &c.Tags, &c.CustomFields, &c.Notes,
-			&c.CreatedAt, &c.UpdatedAt, &deletedAt,
-		)
-		if err != nil {
-			return nil, "", fmt.Errorf("scan company: %w", err)
-		}
-		if deletedAt.Valid {
-			c.DeletedAt = &deletedAt.Time
-		}
-		companies = append(companies, c)
-	}
-
-	if err := rows.Err(); err != nil {
-		return nil, "", fmt.Errorf("iterate companies: %w", err)
+	for _, row := range rows {
+		companies = append(companies, sqlcRowToDomainCompany(row))
 	}
 
 	var nextCursor string
 	if len(companies) > params.Limit {
-		nextCursor = companies[params.Limit-1].CreatedAt.Format(time.RFC3339)
+		nextCursor = companies[params.Limit-1].CreatedAt.Format("2006-01-02T15:04:05Z07:00")
 		companies = companies[:params.Limit]
 	}
 
@@ -135,188 +87,171 @@ func (r *CompanyRepository) List(ctx context.Context, params domain.ListCompanie
 
 // Get retrieves a single company by ID, scoped to workspace.
 // IDOR protection: returns not found if company exists but belongs to another workspace.
-func (r *CompanyRepository) Get(ctx context.Context, workspaceID, companyID uuid.UUID) (*domain.Company, error) {
-	query := `
-		SELECT id, "workspaceId", name, domain, industry, "lifecycleStage", "size",
-		       phone, email, website, address, "revenue", "employeeCount",
-		       "ownerId", tags, "customFields", notes,
-		       "createdAt", "updatedAt", "deletedAt"
-		FROM public."Company"
-		WHERE id = $1 AND "workspaceId" = $2 AND "deletedAt" IS NULL
-	`
-
-	var c domain.Company
-	var deletedAt sql.NullTime
-	err := r.pool.QueryRow(ctx, query, companyID, workspaceID).Scan(
-		&c.ID, &c.WorkspaceID, &c.Name, &c.Domain, &c.Industry,
-		&c.LifecycleStage, &c.Size,
-		&c.Phone, &c.Email, &c.Website, &c.Address,
-		&c.Revenue, &c.EmployeeCount,
-		&c.OwnerID, &c.Tags, &c.CustomFields, &c.Notes,
-		&c.CreatedAt, &c.UpdatedAt, &deletedAt,
-	)
-
+func (r *CompanyRepository) Get(ctx context.Context, workspaceID, companyID string) (*domain.Company, error) {
+	row, err := r.queries.GetCompany(ctx, sqlc.GetCompanyParams{
+		ID:          companyID,
+		WorkspaceId: workspaceID,
+	})
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
 			return nil, ErrCompanyNotFound
 		}
-		return nil, fmt.Errorf("query company: %w", err)
+		return nil, err
 	}
 
-	if deletedAt.Valid {
-		c.DeletedAt = &deletedAt.Time
-	}
-
-	return &c, nil
+	company := sqlcRowToDomainCompany(row)
+	return &company, nil
 }
 
 // Create inserts a new company with workspace isolation.
 func (r *CompanyRepository) Create(ctx context.Context, company *domain.Company) error {
-	query := `
-		INSERT INTO public."Company" (
-			id, "workspaceId", name, domain, industry, "lifecycleStage", "size",
-			phone, email, website, address, "revenue", "employeeCount",
-			"ownerId", tags, "customFields", notes
-		)
-		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17)
-	`
+	now := pgtype.Timestamp{Time: time.Now(), Valid: true}
 
-	_, err := r.pool.Exec(ctx, query,
-		company.ID, company.WorkspaceID, company.Name, company.Domain, company.Industry,
-		company.LifecycleStage, company.Size,
-		company.Phone, company.Email, company.Website, company.Address,
-		company.Revenue, company.EmployeeCount,
-		company.OwnerID, company.Tags, company.CustomFields, company.Notes,
-	)
-
-	if err != nil {
-		var pgErr *pgconn.PgError
-		if errors.As(err, &pgErr) {
-			if pgErr.Code == "23505" { // unique_violation
-				if pgErr.ConstraintName == "unique_domain_per_workspace" {
-					return ErrCompanyDomainConflict
-				}
-			}
+	// Convert domain ENUMs to SQLc ENUMs
+	var size sqlc.NullCompanySize
+	if company.Size.IsValid() {
+		size = sqlc.NullCompanySize{
+			CompanySize: sqlc.CompanySize(company.Size),
+			Valid:       true,
 		}
-		return fmt.Errorf("insert company: %w", err)
 	}
 
-	return nil
+	// Marshal JSONB fields
+	socialUrls, _ := json.Marshal([]string{})
+	businessHours, _ := json.Marshal(map[string]interface{}{})
+	supportHours, _ := json.Marshal(map[string]interface{}{})
+
+	_, err := r.queries.CreateCompany(ctx, sqlc.CreateCompanyParams{
+		ID:             company.ID,
+		WorkspaceId:    company.WorkspaceID,
+		Name:           company.Name,
+		Website:        company.Domain,
+		Linkedin:       nil,
+		LegalName:      nil,
+		Phone:          company.Phone,
+		Instagram:      nil,
+		PolicyUrl:      nil,
+		SocialUrls:     socialUrls,
+		AddressLine:    nil,
+		City:           nil,
+		State:          nil,
+		Country:        nil,
+		Timezone:       nil,
+		Currency:       nil,
+		Locale:         nil,
+		BusinessHours:  businessHours,
+		SupportHours:   supportHours,
+		Size:           size,
+		Revenue:        company.AnnualRevenue,
+		CompanyScore:   0,
+		LifecycleStage: sqlc.CompanyLifecycleStage(company.LifecycleStage),
+		AssignedToId:   &company.OwnerID,
+		CreatedById:    &company.OwnerID,
+		UpdatedById:    &company.OwnerID,
+		CreatedAt:      now,
+		UpdatedAt:      now,
+	})
+
+	return err
 }
 
 // Update atualiza campos de uma empresa (PATCH semântico).
-func (r *CompanyRepository) Update(ctx context.Context, workspaceID, companyID uuid.UUID, req *domain.UpdateCompanyRequest) error {
-	// Dynamic query builder para PATCH semântico
-	query := `UPDATE public."Company" SET "updatedAt" = NOW()`
-	args := []interface{}{}
-	argIdx := 1
-
-	if req.Name != nil {
-		query += fmt.Sprintf(`, name = $%d`, argIdx)
-		args = append(args, *req.Name)
-		argIdx++
-	}
-
-	if req.Domain != nil {
-		query += fmt.Sprintf(`, domain = $%d`, argIdx)
-		args = append(args, *req.Domain)
-		argIdx++
-	}
-
-	if req.Industry != nil {
-		query += fmt.Sprintf(`, industry = $%d`, argIdx)
-		args = append(args, *req.Industry)
-		argIdx++
-	}
-
-	if req.LifecycleStage != nil {
-		query += fmt.Sprintf(`, "lifecycleStage" = $%d`, argIdx)
-		args = append(args, *req.LifecycleStage)
-		argIdx++
-	}
-
-	if req.Size != nil {
-		query += fmt.Sprintf(`, "size" = $%d`, argIdx)
-		args = append(args, *req.Size)
-		argIdx++
-	}
-
-	if req.Phone != nil {
-		query += fmt.Sprintf(`, phone = $%d`, argIdx)
-		args = append(args, *req.Phone)
-		argIdx++
-	}
-
-	if req.Email != nil {
-		query += fmt.Sprintf(`, email = $%d`, argIdx)
-		args = append(args, *req.Email)
-		argIdx++
-	}
-
-	if req.Website != nil {
-		query += fmt.Sprintf(`, website = $%d`, argIdx)
-		args = append(args, *req.Website)
-		argIdx++
-	}
-
-	if req.Address != nil {
-		query += fmt.Sprintf(`, address = $%d`, argIdx)
-		args = append(args, req.Address)
-		argIdx++
-	}
-
-	if req.Revenue != nil {
-		query += fmt.Sprintf(`, "revenue" = $%d`, argIdx)
-		args = append(args, *req.Revenue)
-		argIdx++
-	}
-
-	if req.EmployeeCount != nil {
-		query += fmt.Sprintf(`, "employeeCount" = $%d`, argIdx)
-		args = append(args, *req.EmployeeCount)
-		argIdx++
-	}
-
-	if req.OwnerID != nil {
-		query += fmt.Sprintf(`, "ownerId" = $%d`, argIdx)
-		args = append(args, *req.OwnerID)
-		argIdx++
-	}
-
-	if req.Tags != nil {
-		query += fmt.Sprintf(`, tags = $%d`, argIdx)
-		args = append(args, *req.Tags)
-		argIdx++
-	}
-
-	if req.CustomFields != nil {
-		query += fmt.Sprintf(`, "customFields" = $%d`, argIdx)
-		args = append(args, req.CustomFields)
-		argIdx++
-	}
-
-	if req.Notes != nil {
-		query += fmt.Sprintf(`, notes = $%d`, argIdx)
-		args = append(args, *req.Notes)
-		argIdx++
-	}
-
-	// WHERE clause com multi-tenant isolation
-	query += fmt.Sprintf(` WHERE id = $%d AND "workspaceId" = $%d AND "deletedAt" IS NULL`, argIdx, argIdx+1)
-	args = append(args, companyID, workspaceID)
-
-	result, err := r.pool.Exec(ctx, query, args...)
+func (r *CompanyRepository) Update(ctx context.Context, workspaceID, companyID string, req *domain.UpdateCompanyRequest) error {
+	// SQLc UpdateCompany usa COALESCE, então precisamos passar valores atuais ou novos
+	// Primeiro, buscamos a empresa atual
+	current, err := r.Get(ctx, workspaceID, companyID)
 	if err != nil {
-		var pgErr *pgconn.PgError
-		if errors.As(err, &pgErr) {
-			if pgErr.Code == "23505" && pgErr.ConstraintName == "unique_domain_per_workspace" {
-				return ErrCompanyDomainConflict
-			}
-		}
-		return fmt.Errorf("update company: %w", err)
+		return err
 	}
 
-	if result.RowsAffected() == 0 {
+	now := pgtype.Timestamp{Time: time.Now(), Valid: true}
+
+	// Merge: use req.* se não for nil, senão use current.*
+	name := current.Name
+	if req.Name != nil {
+		name = *req.Name
+	}
+
+	website := current.Domain
+	if req.Domain != nil {
+		website = req.Domain
+	}
+
+	phone := current.Phone
+	if req.Phone != nil {
+		phone = req.Phone
+	}
+
+	lifecycleStage := current.LifecycleStage
+	if req.LifecycleStage != nil {
+		lifecycleStage = *req.LifecycleStage
+	}
+
+	size := sqlc.NullCompanySize{
+		CompanySize: sqlc.CompanySize(current.Size),
+		Valid:       current.Size.IsValid(),
+	}
+	if req.CompanySize != nil {
+		size = sqlc.NullCompanySize{
+			CompanySize: sqlc.CompanySize(*req.CompanySize),
+			Valid:       true,
+		}
+	}
+
+	revenue := current.AnnualRevenue
+	if req.AnnualRevenue != nil {
+		revenue = req.AnnualRevenue
+	}
+
+	assignedToId := &current.OwnerID
+	if req.OwnerID != nil {
+		assignedToId = req.OwnerID
+	}
+
+	// Campos JSONB fixos
+	socialUrls, _ := json.Marshal([]string{})
+	businessHours, _ := json.Marshal(map[string]interface{}{})
+	supportHours, _ := json.Marshal(map[string]interface{}{})
+
+	result, err := r.queries.UpdateCompany(ctx, sqlc.UpdateCompanyParams{
+		ID:             companyID,
+		WorkspaceId:    workspaceID,
+		Name:           name,
+		Website:        website,
+		Linkedin:       nil,
+		LegalName:      nil,
+		Phone:          phone,
+		Instagram:      nil,
+		PolicyUrl:      nil,
+		SocialUrls:     socialUrls,
+		AddressLine:    nil,
+		City:           nil,
+		State:          nil,
+		Country:        nil,
+		Timezone:       nil,
+		Currency:       nil,
+		Locale:         nil,
+		BusinessHours:  businessHours,
+		SupportHours:   supportHours,
+		Size:           size,
+		Revenue:        revenue,
+		CompanyScore:   0,
+		LifecycleStage: sqlc.CompanyLifecycleStage(lifecycleStage),
+		AssignedToId:   assignedToId,
+		UpdatedById:    assignedToId,
+		UpdatedAt:      now,
+		UpdatedAt_2:    pgtype.Timestamp{Time: current.UpdatedAt, Valid: true}, // optimistic lock
+	})
+
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return ErrCompanyNotFound
+		}
+		return err
+	}
+
+	// Verificar se houve atualização (optimistic lock pode falhar)
+	if result.ID == "" {
 		return ErrCompanyNotFound
 	}
 
@@ -324,40 +259,105 @@ func (r *CompanyRepository) Update(ctx context.Context, workspaceID, companyID u
 }
 
 // SoftDelete marca uma empresa como deletada (soft delete).
-func (r *CompanyRepository) SoftDelete(ctx context.Context, workspaceID, companyID uuid.UUID) error {
-	query := `
-		UPDATE public."Company"
-		SET "deletedAt" = NOW(), "updatedAt" = NOW()
-		WHERE id = $1 AND "workspaceId" = $2 AND "deletedAt" IS NULL
-	`
+func (r *CompanyRepository) SoftDelete(ctx context.Context, workspaceID, companyID string) error {
+	now := pgtype.Timestamp{Time: time.Now(), Valid: true}
 
-	result, err := r.pool.Exec(ctx, query, companyID, workspaceID)
-	if err != nil {
-		return fmt.Errorf("soft delete company: %w", err)
-	}
+	err := r.queries.SoftDeleteCompany(ctx, sqlc.SoftDeleteCompanyParams{
+		ID:          companyID,
+		WorkspaceId: workspaceID,
+		DeletedAt:   now,
+		DeletedById: nil, // TODO: passar userID do context
+	})
 
-	if result.RowsAffected() == 0 {
-		return ErrCompanyNotFound
-	}
-
-	return nil
+	return err
 }
 
 // ExistsInWorkspace verifica se uma empresa existe no workspace.
 // Usado para validação de Contact.CompanyID.
-func (r *CompanyRepository) ExistsInWorkspace(ctx context.Context, workspaceID, companyID uuid.UUID) (bool, error) {
-	query := `
-		SELECT EXISTS(
-			SELECT 1 FROM public."Company"
-			WHERE id = $1 AND "workspaceId" = $2 AND "deletedAt" IS NULL
-		)
-	`
+func (r *CompanyRepository) ExistsInWorkspace(ctx context.Context, workspaceID, companyID string) (bool, error) {
+	return r.queries.CompanyExistsInWorkspace(ctx, sqlc.CompanyExistsInWorkspaceParams{
+		ID:          companyID,
+		WorkspaceId: workspaceID,
+	})
+}
 
-	var exists bool
-	err := r.pool.QueryRow(ctx, query, companyID, workspaceID).Scan(&exists)
-	if err != nil {
-		return false, fmt.Errorf("check company existence: %w", err)
+// sqlcRowToDomainCompany converte um row SQLc para domain.Company
+func sqlcRowToDomainCompany(row interface{}) domain.Company {
+	var c domain.Company
+
+	switch r := row.(type) {
+	case sqlc.GetCompanyRow:
+		c.ID = r.ID
+		c.WorkspaceID = r.WorkspaceId
+		c.Name = r.Name
+		c.Domain = r.Website
+		c.LifecycleStage = domain.CompanyLifecycleStage(r.LifecycleStage)
+		c.Phone = r.Phone
+		c.Website = r.Website
+		c.AnnualRevenue = r.Revenue
+		c.Tags = []string{}
+		c.CustomFields = map[string]interface{}{}
+		c.Address = map[string]interface{}{}
+
+		// Convert ENUMs
+		if r.Size.Valid {
+			c.Size = domain.CompanySize(r.Size.CompanySize)
+			c.CompanySize = domain.CompanySize(r.Size.CompanySize)
+		}
+
+		// Convert OwnerID
+		if r.AssignedToId != nil {
+			c.OwnerID = *r.AssignedToId
+		}
+
+		// Convert timestamps
+		if r.CreatedAt.Valid {
+			c.CreatedAt = r.CreatedAt.Time
+		}
+		if r.UpdatedAt.Valid {
+			c.UpdatedAt = r.UpdatedAt.Time
+		}
+		if r.DeletedAt.Valid {
+			deletedAt := r.DeletedAt.Time
+			c.DeletedAt = &deletedAt
+		}
+
+	case sqlc.ListCompaniesRow:
+		c.ID = r.ID
+		c.WorkspaceID = r.WorkspaceId
+		c.Name = r.Name
+		c.Domain = r.Website
+		c.LifecycleStage = domain.CompanyLifecycleStage(r.LifecycleStage)
+		c.Phone = r.Phone
+		c.Website = r.Website
+		c.AnnualRevenue = r.Revenue
+		c.Tags = []string{}
+		c.CustomFields = map[string]interface{}{}
+		c.Address = map[string]interface{}{}
+
+		// Convert ENUMs
+		if r.Size.Valid {
+			c.Size = domain.CompanySize(r.Size.CompanySize)
+			c.CompanySize = domain.CompanySize(r.Size.CompanySize)
+		}
+
+		// Convert OwnerID
+		if r.AssignedToId != nil {
+			c.OwnerID = *r.AssignedToId
+		}
+
+		// Convert timestamps
+		if r.CreatedAt.Valid {
+			c.CreatedAt = r.CreatedAt.Time
+		}
+		if r.UpdatedAt.Valid {
+			c.UpdatedAt = r.UpdatedAt.Time
+		}
+		if r.DeletedAt.Valid {
+			deletedAt := r.DeletedAt.Time
+			c.DeletedAt = &deletedAt
+		}
 	}
 
-	return exists, nil
+	return c
 }

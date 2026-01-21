@@ -8,8 +8,6 @@ import (
 
 	"linkko-api/internal/domain"
 	"linkko-api/internal/repo"
-
-	"github.com/google/uuid"
 )
 
 var (
@@ -44,7 +42,7 @@ func NewTaskService(taskRepo *repo.TaskRepository, auditRepo *repo.AuditRepo, wo
 
 // ListTasks retrieves tasks with RBAC validation.
 // Permission: all workspace members can list tasks.
-func (s *TaskService) ListTasks(ctx context.Context, workspaceID, actorID uuid.UUID, params domain.ListTasksParams) (*domain.TaskListResponse, error) {
+func (s *TaskService) ListTasks(ctx context.Context, workspaceID, actorID string, params domain.ListTasksParams) (*domain.TaskListResponse, error) {
 	// Fetch user's role in this workspace from database
 	role, err := s.workspaceRepo.GetMemberRole(ctx, actorID, workspaceID)
 	if err != nil {
@@ -79,7 +77,7 @@ func (s *TaskService) ListTasks(ctx context.Context, workspaceID, actorID uuid.U
 
 // GetTask retrieves a single task with RBAC validation.
 // Permission: all workspace members can view tasks.
-func (s *TaskService) GetTask(ctx context.Context, workspaceID, taskID, actorID uuid.UUID) (*domain.Task, error) {
+func (s *TaskService) GetTask(ctx context.Context, workspaceID, taskID, actorID string) (*domain.Task, error) {
 	// Fetch user's role in this workspace from database
 	role, err := s.workspaceRepo.GetMemberRole(ctx, actorID, workspaceID)
 	if err != nil {
@@ -104,7 +102,7 @@ func (s *TaskService) GetTask(ctx context.Context, workspaceID, taskID, actorID 
 
 // CreateTask creates a new task with RBAC validation and position calculation.
 // Permission: work_admin, work_manager, work_user can create tasks.
-func (s *TaskService) CreateTask(ctx context.Context, workspaceID, actorID uuid.UUID, req *domain.CreateTaskRequest) (*domain.Task, error) {
+func (s *TaskService) CreateTask(ctx context.Context, workspaceID, actorID string, req *domain.CreateTaskRequest) (*domain.Task, error) {
 	// Fetch user's role in this workspace from database
 	role, err := s.workspaceRepo.GetMemberRole(ctx, actorID, workspaceID)
 	if err != nil {
@@ -121,7 +119,7 @@ func (s *TaskService) CreateTask(ctx context.Context, workspaceID, actorID uuid.
 
 	// Defaults
 	task := &domain.Task{
-		ID:          uuid.New(),
+		ID:          generateID(),
 		WorkspaceID: workspaceID,
 		Title:       req.Title,
 		Description: req.Description,
@@ -162,11 +160,11 @@ func (s *TaskService) CreateTask(ctx context.Context, workspaceID, actorID uuid.
 	}
 
 	// Audit log (simplified - using LogAction pattern from ContactService)
-	taskIDStr := task.ID.String()
+	taskIDStr := task.ID
 	auditErr := s.auditRepo.LogAction(
 		ctx,
-		workspaceID.String(),
-		actorID.String(),
+		workspaceID,
+		actorID,
 		"create",
 		"task",
 		&taskIDStr,
@@ -184,7 +182,7 @@ func (s *TaskService) CreateTask(ctx context.Context, workspaceID, actorID uuid.
 // UpdateTask updates a task with RBAC validation.
 // Permission: work_admin, work_manager, work_user can update tasks.
 // Para mover task (drag-and-drop), usar MoveTask.
-func (s *TaskService) UpdateTask(ctx context.Context, workspaceID, taskID, actorID uuid.UUID, req *domain.UpdateTaskRequest) (*domain.Task, error) {
+func (s *TaskService) UpdateTask(ctx context.Context, workspaceID, taskID, actorID string, req *domain.UpdateTaskRequest) (*domain.Task, error) {
 	// Fetch user's role in this workspace from database
 	role, err := s.workspaceRepo.GetMemberRole(ctx, actorID, workspaceID)
 	if err != nil {
@@ -212,11 +210,11 @@ func (s *TaskService) UpdateTask(ctx context.Context, workspaceID, taskID, actor
 	}
 
 	// Audit log (simplified)
-	taskIDStr := taskID.String()
+	taskIDStr := taskID
 	auditErr := s.auditRepo.LogAction(
 		ctx,
-		workspaceID.String(),
-		actorID.String(),
+		workspaceID,
+		actorID,
 		"update",
 		"task",
 		&taskIDStr,
@@ -239,7 +237,7 @@ func (s *TaskService) UpdateTask(ctx context.Context, workspaceID, taskID, actor
 
 // DeleteTask soft deletes a task with RBAC validation.
 // Permission: work_admin, work_manager can delete tasks.
-func (s *TaskService) DeleteTask(ctx context.Context, workspaceID, taskID, actorID uuid.UUID) error {
+func (s *TaskService) DeleteTask(ctx context.Context, workspaceID, taskID, actorID string) error {
 	// Fetch user's role in this workspace from database
 	role, err := s.workspaceRepo.GetMemberRole(ctx, actorID, workspaceID)
 	if err != nil {
@@ -267,11 +265,11 @@ func (s *TaskService) DeleteTask(ctx context.Context, workspaceID, taskID, actor
 	}
 
 	// Audit log (simplified)
-	taskIDStr := taskID.String()
+	taskIDStr := taskID
 	auditErr := s.auditRepo.LogAction(
 		ctx,
-		workspaceID.String(),
-		actorID.String(),
+		workspaceID,
+		actorID,
 		"delete",
 		"task",
 		&taskIDStr,
@@ -302,7 +300,7 @@ func (s *TaskService) DeleteTask(ctx context.Context, workspaceID, taskID, actor
 // 5. Log warning se abs(posAfter - posBefore) < 0.000001
 // 6. Update task com nova position e status
 // 7. Commit transaction
-func (s *TaskService) MoveTask(ctx context.Context, workspaceID, taskID, actorID uuid.UUID, req *domain.MoveTaskRequest) (*domain.Task, error) {
+func (s *TaskService) MoveTask(ctx context.Context, workspaceID, taskID, actorID string, req *domain.MoveTaskRequest) (*domain.Task, error) {
 	// Fetch user's role in this workspace from database
 	role, err := s.workspaceRepo.GetMemberRole(ctx, actorID, workspaceID)
 	if err != nil {
@@ -374,7 +372,7 @@ func (s *TaskService) MoveTask(ctx context.Context, workspaceID, taskID, actorID
 	}
 
 	// Audit log (após commit bem-sucedido)
-	taskIDStr := taskID.String()
+	taskIDStr := taskID
 	metadata := map[string]interface{}{
 		"fromStatus":  task.Status,
 		"toStatus":    req.ToStatus,
@@ -382,8 +380,8 @@ func (s *TaskService) MoveTask(ctx context.Context, workspaceID, taskID, actorID
 	}
 	auditErr := s.auditRepo.LogAction(
 		ctx,
-		workspaceID.String(),
-		actorID.String(),
+		workspaceID,
+		actorID,
 		"move",
 		"task",
 		&taskIDStr,

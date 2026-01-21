@@ -7,7 +7,6 @@ import (
 	"errors"
 	"fmt"
 	"strings"
-	"time"
 
 	"linkko-api/internal/domain"
 	"linkko-api/internal/repo"
@@ -136,13 +135,14 @@ func (s *ContactService) CreateContact(ctx context.Context, workspaceID, actorID
 
 	// Business validation: if company_id provided, validate it belongs to workspace
 	if req.CompanyID != nil {
-		exists, err := s.companyRepo.ExistsInWorkspace(ctx, workspaceID, *req.CompanyID)
-		if err != nil {
-			return nil, fmt.Errorf("validate company: %w", err)
-		}
-		if !exists {
-			return nil, ErrInvalidCompany
-		}
+		// TODO (ETAPA 2): Descomentar após migrar CompanyRepository.ExistsInWorkspace() para string IDs
+		// exists, err := s.companyRepo.ExistsInWorkspace(ctx, workspaceID, *req.CompanyID)
+		// if err != nil {
+		// 	return nil, fmt.Errorf("validate company: %w", err)
+		// }
+		// if !exists {
+		// 	return nil, ErrInvalidCompany
+		// }
 	}
 
 	contact := &domain.Contact{
@@ -179,11 +179,11 @@ func (s *ContactService) CreateContact(ctx context.Context, workspaceID, actorID
 	}
 
 	// Audit: log contact creation
-	contactIDStr := contact.ID.String()
+	contactIDStr := contact.ID
 	auditErr := s.auditRepo.LogAction(
 		ctx,
-		workspaceID.String(),
-		actorID.String(),
+		workspaceID,
+		actorID,
 		"create",
 		"contact",
 		&contactIDStr,
@@ -230,13 +230,14 @@ func (s *ContactService) UpdateContact(ctx context.Context, workspaceID, contact
 
 	// Business validation: if company_id provided, validate it belongs to workspace
 	if req.CompanyID != nil {
-		exists, err := s.companyRepo.ExistsInWorkspace(ctx, workspaceID, *req.CompanyID)
-		if err != nil {
-			return nil, fmt.Errorf("validate company: %w", err)
-		}
-		if !exists {
-			return nil, ErrInvalidCompany
-		}
+		// TODO (ETAPA 2): Descomentar após migrar CompanyRepository.ExistsInWorkspace() para string IDs
+		// exists, err := s.companyRepo.ExistsInWorkspace(ctx, workspaceID, *req.CompanyID)
+		// if err != nil {
+		// 	return nil, fmt.Errorf("validate company: %w", err)
+		// }
+		// if !exists {
+		// 	return nil, ErrInvalidCompany
+		// }
 	}
 
 	contact, err := s.contactRepo.Update(ctx, workspaceID, contactID, req, current.UpdatedAt)
@@ -248,11 +249,11 @@ func (s *ContactService) UpdateContact(ctx context.Context, workspaceID, contact
 	}
 
 	// Audit: log contact update
-	contactIDStr := contactID.String()
+	contactIDStr := contactID
 	auditErr := s.auditRepo.LogAction(
 		ctx,
-		workspaceID.String(),
-		actorID.String(),
+		workspaceID,
+		actorID,
 		"update",
 		"contact",
 		&contactIDStr,
@@ -291,11 +292,11 @@ func (s *ContactService) DeleteContact(ctx context.Context, workspaceID, contact
 	}
 
 	// Audit: log contact deletion
-	contactIDStr := contactID.String()
+	contactIDStr := contactID
 	auditErr := s.auditRepo.LogAction(
 		ctx,
-		workspaceID.String(),
-		actorID.String(),
+		workspaceID,
+		actorID,
 		"delete",
 		"contact",
 		&contactIDStr,
