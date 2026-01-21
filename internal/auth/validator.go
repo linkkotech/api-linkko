@@ -1,6 +1,7 @@
 package auth
 
 import (
+	"errors"
 	"fmt"
 
 	"github.com/golang-jwt/jwt/v5"
@@ -43,12 +44,18 @@ func (v *HS256Validator) Validate(tokenString string, kid string) (*CustomClaims
 	})
 
 	if err != nil {
+		if errors.Is(err, jwt.ErrTokenExpired) {
+			return nil, fmt.Errorf("token expired: %w", err)
+		}
+		if errors.Is(err, jwt.ErrTokenSignatureInvalid) {
+			return nil, fmt.Errorf("invalid signature: %w", err)
+		}
 		return nil, fmt.Errorf("failed to parse token: %w", err)
 	}
 
 	claims, ok := token.Claims.(*CustomClaims)
 	if !ok || !token.Valid {
-		return nil, fmt.Errorf("invalid token")
+		return nil, fmt.Errorf("invalid token: valid=%v", token.Valid)
 	}
 
 	// Validate custom claims
@@ -91,12 +98,18 @@ func (v *RS256Validator) Validate(tokenString string, kid string) (*CustomClaims
 	})
 
 	if err != nil {
+		if errors.Is(err, jwt.ErrTokenExpired) {
+			return nil, fmt.Errorf("token expired: %w", err)
+		}
+		if errors.Is(err, jwt.ErrTokenSignatureInvalid) {
+			return nil, fmt.Errorf("invalid signature: %w", err)
+		}
 		return nil, fmt.Errorf("failed to parse token: %w", err)
 	}
 
 	claims, ok := token.Claims.(*CustomClaims)
 	if !ok || !token.Valid {
-		return nil, fmt.Errorf("invalid token")
+		return nil, fmt.Errorf("invalid token: valid=%v", token.Valid)
 	}
 
 	// Validate custom claims

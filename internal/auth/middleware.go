@@ -6,6 +6,7 @@ import (
 	"strings"
 
 	"linkko-api/internal/logger"
+
 	"go.uber.org/zap"
 )
 
@@ -40,7 +41,13 @@ func JWTAuthMiddleware(resolver *KeyResolver) func(http.Handler) http.Handler {
 			// Validate token
 			claims, err := resolver.Resolve(tokenString)
 			if err != nil {
-				log.Warn("token validation failed", zap.Error(err))
+				// Categorize error for better logging
+				log.Warn("token validation failed",
+					zap.Error(err),
+					zap.String("remote_addr", r.RemoteAddr),
+					zap.String("method", r.Method),
+					zap.String("path", r.URL.Path),
+				)
 				http.Error(w, "invalid token", http.StatusUnauthorized)
 				return
 			}

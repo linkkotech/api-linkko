@@ -27,7 +27,7 @@ type Config struct {
 	OTELSamplingRatio    float64 `env:"OTEL_SAMPLING_RATIO" envDefault:"0.1"`
 
 	// Server
-	Port string `env:"PORT" envDefault:"8080"`
+	Port string `env:"PORT" envDefault:"3002"`
 
 	// Rate Limiting
 	RateLimitPerWorkspacePerMin int `env:"RATE_LIMIT_PER_WORKSPACE_PER_MIN" envDefault:"100"`
@@ -36,7 +36,7 @@ type Config struct {
 // LoadConfig loads configuration from environment variables
 func LoadConfig() (*Config, error) {
 	cfg := &Config{}
-	
+
 	if err := env.Parse(cfg); err != nil {
 		return nil, fmt.Errorf("failed to parse config: %w", err)
 	}
