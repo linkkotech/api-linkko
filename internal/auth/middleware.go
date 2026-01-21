@@ -39,7 +39,7 @@ func JWTAuthMiddleware(resolver *KeyResolver) func(http.Handler) http.Handler {
 			tokenString := parts[1]
 
 			// Validate token
-			claims, err := resolver.Resolve(tokenString)
+			claims, err := resolver.Resolve(r.Context(), tokenString)
 			if err != nil {
 				// Categorize error for better logging
 				log.Warn("token validation failed",

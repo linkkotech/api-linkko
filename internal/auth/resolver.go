@@ -1,10 +1,15 @@
 package auth
 
 import (
+	"context"
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"strings"
+
+	"linkko-api/internal/logger"
+
+	"go.uber.org/zap"
 )
 
 // KeyResolver resolves JWT validators based on issuer and kid
@@ -34,11 +39,27 @@ func (kr *KeyResolver) RegisterValidator(issuer string, validator TokenValidator
 }
 
 // Resolve validates a JWT token by resolving the appropriate validator
-func (kr *KeyResolver) Resolve(tokenString string) (*CustomClaims, error) {
+func (kr *KeyResolver) Resolve(ctx context.Context, tokenString string) (*CustomClaims, error) {
+	log := logger.GetLogger(ctx)
+
 	// Extract issuer and kid from JWT header without validating signature
-	issuer, kid, err := kr.extractHeaderInfo(tokenString)
+	issuer, kid, originalKid, err := kr.extractHeaderInfo(tokenString)
 	if err != nil {
 		return nil, fmt.Errorf("failed to extract header info: %w", err)
+	}
+
+	// Log kid selection for debugging
+	if originalKid == "" {
+		log.Debug("jwt kid fallback applied",
+			zap.String("issuer", issuer),
+			zap.String("original_kid", "<empty>"),
+			zap.String("selected_kid", kid),
+		)
+	} else {
+		log.Debug("jwt kid extracted",
+			zap.String("issuer", issuer),
+			zap.String("kid", kid),
+		)
 	}
 
 	// Check if issuer is allowed
@@ -72,44 +93,53 @@ func (kr *KeyResolver) Resolve(tokenString string) (*CustomClaims, error) {
 }
 
 // extractHeaderInfo extracts issuer and kid from JWT without validating signature
-func (kr *KeyResolver) extractHeaderInfo(tokenString string) (string, string, error) {
+// Returns: issuer, selectedKid, originalKid, error
+func (kr *KeyResolver) extractHeaderInfo(tokenString string) (string, string, string, error) {
 	parts := strings.Split(tokenString, ".")
 	if len(parts) != 3 {
-		return "", "", fmt.Errorf("invalid token format")
+		return "", "", "", fmt.Errorf("invalid token format")
 	}
 
 	// Decode header
 	headerBytes, err := base64.RawURLEncoding.DecodeString(parts[0])
 	if err != nil {
-		return "", "", fmt.Errorf("failed to decode header: %w", err)
+		return "", "", "", fmt.Errorf("failed to decode header: %w", err)
 	}
 
 	var header struct {
 		Kid string `json:"kid"`
 	}
 	if err := json.Unmarshal(headerBytes, &header); err != nil {
-		return "", "", fmt.Errorf("failed to unmarshal header: %w", err)
+		return "", "", "", fmt.Errorf("failed to unmarshal header: %w", err)
 	}
 
 	// Decode payload to get issuer
 	payloadBytes, err := base64.RawURLEncoding.DecodeString(parts[1])
 	if err != nil {
-		return "", "", fmt.Errorf("failed to decode payload: %w", err)
+		return "", "", "", fmt.Errorf("failed to decode payload: %w", err)
 	}
 
 	var payload struct {
 		Issuer string `json:"iss"`
 	}
 	if err := json.Unmarshal(payloadBytes, &payload); err != nil {
-		return "", "", fmt.Errorf("failed to unmarshal payload: %w", err)
+		return "", "", "", fmt.Errorf("failed to unmarshal payload: %w", err)
 	}
 
-	kid := header.Kid
-	if kid == "" {
-		kid = "v1" // default kid if not present
+	originalKid := header.Kid
+	selectedKid := originalKid
+
+	// HOTFIX: Fallback to "v1" for linkko-crm-web when kid is empty
+	if selectedKid == "" {
+		if payload.Issuer == "linkko-crm-web" {
+			selectedKid = "v1"
+		} else {
+			// For other issuers, also default to v1 if kid is missing
+			selectedKid = "v1"
+		}
 	}
 
-	return payload.Issuer, kid, nil
+	return payload.Issuer, selectedKid, originalKid, nil
 }
 
 // validAudience checks if any audience claim matches allowed audiences
