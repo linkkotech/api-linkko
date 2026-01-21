@@ -166,8 +166,8 @@ type CreateCompanyRequest struct {
 	Industry *string `json:"industry,omitempty" validate:"omitempty,max=100"`
 
 	// Classificação
-	LifecycleStage *CompanyLifecycleStage `json:"lifecycleStage,omitempty" validate:"omitempty,oneof=lead prospect customer partner inactive evangelist"`
-	Size           *CompanySize           `json:"size,omitempty" validate:"omitempty,oneof=solopreneur small medium midmarket enterprise large_enterprise"`
+	LifecycleStage *CompanyLifecycleStage `json:"lifecycleStage,omitempty" validate:"omitempty,oneof=LEAD MQL SQL CUSTOMER CHURNED"`
+	Size           *CompanySize           `json:"size,omitempty" validate:"omitempty,oneof=STARTUP SMB MID_MARKET ENTERPRISE"`
 
 	// Contato
 	Phone   *string `json:"phone,omitempty" validate:"omitempty,max=50"`
@@ -199,8 +199,8 @@ type UpdateCompanyRequest struct {
 
 	// Classificação
 	Industry       *string                `json:"industry,omitempty" validate:"omitempty,max=100"`
-	LifecycleStage *CompanyLifecycleStage `json:"lifecycleStage,omitempty" validate:"omitempty,oneof=lead prospect customer partner inactive evangelist"`
-	Size           *CompanySize           `json:"size,omitempty" validate:"omitempty,oneof=solopreneur small medium midmarket enterprise large_enterprise"`
+	LifecycleStage *CompanyLifecycleStage `json:"lifecycleStage,omitempty" validate:"omitempty,oneof=LEAD MQL SQL CUSTOMER CHURNED"`
+	Size           *CompanySize           `json:"size,omitempty" validate:"omitempty,oneof=STARTUP SMB MID_MARKET ENTERPRISE"`
 
 	// Contato
 	Phone   *string `json:"phone,omitempty" validate:"omitempty,max=50"`

@@ -2,8 +2,6 @@ package domain
 
 import (
 	"time"
-
-	"github.com/google/uuid"
 )
 
 // =====================================================
@@ -63,14 +61,14 @@ type WorkspaceRole struct {
 // This is a junction table mapping actors to workspaces with their assigned roles.
 type WorkspaceMember struct {
 	// Identity
-	UserID      uuid.UUID `json:"userId" db:"userId"`           // Actor ID (user or AI agent)
-	WorkspaceID uuid.UUID `json:"workspaceId" db:"workspaceId"` // Workspace ID
+	UserID      string `json:"userId" db:"userId"`           // Actor ID (user or AI agent)
+	WorkspaceID string `json:"workspaceId" db:"workspaceId"` // Workspace ID
 
 	// Authorization
 	WorkspaceRoleID Role `json:"workspaceRoleId" db:"workspaceRoleId"` // Role ID (work_admin, etc.)
 
 	// Invitation metadata
-	InvitedBy  *uuid.UUID `json:"invitedBy,omitempty" db:"invited_by"`   // User who invited this member
+	InvitedBy  *string `json:"invitedBy,omitempty" db:"invited_by"`   // User who invited this member
 	InvitedAt  time.Time  `json:"invitedAt" db:"invited_at"`             // When invitation was sent
 	AcceptedAt *time.Time `json:"acceptedAt,omitempty" db:"accepted_at"` // When invitation was accepted (NULL if pending)
 

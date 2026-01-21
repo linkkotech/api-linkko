@@ -69,7 +69,7 @@ func (h *TaskHandler) ListTasks(w http.ResponseWriter, r *http.Request) {
 	if statusStr := r.URL.Query().Get("status"); statusStr != "" {
 		status := domain.TaskStatus(statusStr)
 		if !status.IsValid() {
-			writeError(w, ctx, log, http.StatusBadRequest, "INVALID_STATUS", "status must be one of: backlog, todo, in_progress, in_review, done, cancelled")
+			writeError(w, ctx, log, http.StatusBadRequest, "INVALID_STATUS", "status must be one of: TODO, IN_PROGRESS, DONE, CANCELLED")
 			return
 		}
 		params.Status = &status
@@ -78,7 +78,7 @@ func (h *TaskHandler) ListTasks(w http.ResponseWriter, r *http.Request) {
 	if priorityStr := r.URL.Query().Get("priority"); priorityStr != "" {
 		priority := domain.Priority(priorityStr)
 		if !priority.IsValid() {
-			writeError(w, ctx, log, http.StatusBadRequest, "INVALID_PRIORITY", "priority must be one of: low, medium, high, urgent")
+			writeError(w, ctx, log, http.StatusBadRequest, "INVALID_PRIORITY", "priority must be one of: LOW, MEDIUM, HIGH, URGENT")
 			return
 		}
 		params.Priority = &priority
@@ -373,7 +373,7 @@ func (h *TaskHandler) MoveTask(w http.ResponseWriter, r *http.Request) {
 
 	// Validar status destino
 	if !req.ToStatus.IsValid() {
-		writeError(w, ctx, log, http.StatusBadRequest, "INVALID_STATUS", "toStatus must be one of: backlog, todo, in_progress, in_review, done, cancelled")
+		writeError(w, ctx, log, http.StatusBadRequest, "INVALID_STATUS", "toStatus must be one of: TODO, IN_PROGRESS, DONE, CANCELLED")
 		return
 	}
 

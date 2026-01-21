@@ -214,9 +214,9 @@ type CreateTaskRequest struct {
 	Description *string `json:"description,omitempty" validate:"omitempty,max=5000"`
 
 	// Estados e classificação
-	Status   *TaskStatus `json:"status,omitempty" validate:"omitempty,oneof=backlog todo in_progress in_review done cancelled"`
-	Priority *Priority   `json:"priority,omitempty" validate:"omitempty,oneof=low medium high urgent"`
-	Type     *TaskType   `json:"type,omitempty" validate:"omitempty,oneof=task bug feature improvement research"`
+	Status   *TaskStatus `json:"status,omitempty" validate:"omitempty,oneof=TODO IN_PROGRESS DONE CANCELLED"`
+	Priority *Priority   `json:"priority,omitempty" validate:"omitempty,oneof=LOW MEDIUM HIGH URGENT"`
+	Type     *TaskType   `json:"type,omitempty" validate:"omitempty,oneof=CALL EMAIL MEETING FOLLOWUP OTHER"`
 
 	// Relacionamentos opcionais - IDs são TEXT
 	ActorID    *string `json:"actorId,omitempty"`
@@ -237,8 +237,8 @@ type UpdateTaskRequest struct {
 	Description *string `json:"description,omitempty" validate:"omitempty,max=5000"`
 
 	// Estados e classificação (sem Position - usar :move para reordenação)
-	Priority *Priority `json:"priority,omitempty" validate:"omitempty,oneof=low medium high urgent"`
-	Type     *TaskType `json:"type,omitempty" validate:"omitempty,oneof=task bug feature improvement research"`
+	Priority *Priority `json:"priority,omitempty" validate:"omitempty,oneof=LOW MEDIUM HIGH URGENT"`
+	Type     *TaskType `json:"type,omitempty" validate:"omitempty,oneof=CALL EMAIL MEETING FOLLOWUP OTHER"`
 
 	// Relacionamentos - IDs são TEXT
 	AssignedTo *string `json:"assignedTo,omitempty"`
@@ -261,7 +261,7 @@ type UpdateTaskRequest struct {
 // - Ambos: position = (beforeTask.position + afterTask.position) / 2
 type MoveTaskRequest struct {
 	// Status destino (obrigatório)
-	ToStatus TaskStatus `json:"toStatus" validate:"required,oneof=backlog todo in_progress in_review done cancelled"`
+	ToStatus TaskStatus `json:"toStatus" validate:"required,oneof=TODO IN_PROGRESS DONE CANCELLED"`
 
 	// Posicionamento relativo (opcional - vazio = final da coluna) - IDs são TEXT
 	BeforeTaskID *string `json:"beforeTaskId,omitempty"`

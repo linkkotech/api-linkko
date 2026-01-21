@@ -187,7 +187,7 @@ type CreateStageRequest struct {
 
 	// Dados opcionais
 	Description          *string     `json:"description,omitempty" validate:"omitempty,max=5000"`
-	StageGroup           *StageGroup `json:"stageGroup,omitempty" validate:"omitempty,oneof=active won lost"`
+	StageGroup           *StageGroup `json:"stageGroup,omitempty" validate:"omitempty,oneof=OPEN ACTIVE DONE CLOSED"`
 	OrderIndex           *int        `json:"orderIndex,omitempty" validate:"omitempty,gte=0"`
 	Probability          *int        `json:"probability,omitempty" validate:"omitempty,gte=0,lte=100"`
 	AutoArchiveAfterDays *int        `json:"autoArchiveAfterDays,omitempty" validate:"omitempty,gte=1"`
@@ -204,8 +204,8 @@ type UpdatePipelineRequest struct {
 type UpdateStageRequest struct {
 	Name        *string       `json:"name,omitempty" validate:"omitempty,min=1,max=255"`
 	Description *string       `json:"description,omitempty" validate:"omitempty,max=5000"`
-	Group       *StageGroup   `json:"group,omitempty" validate:"omitempty,oneof=active won lost"`
-	Type        *PipelineType `json:"type,omitempty" validate:"omitempty,oneof=sales recruitment onboarding custom"`
+	Group       *StageGroup   `json:"group,omitempty" validate:"omitempty,oneof=OPEN ACTIVE DONE CLOSED"`
+	Type        *PipelineType `json:"type,omitempty" validate:"omitempty,oneof=TASK DEAL TICKET CONTACT"`
 	OrderIndex  *int          `json:"orderIndex,omitempty" validate:"omitempty,gte=0"`
 	Color       *string       `json:"color,omitempty"`
 	IsLocked    *bool         `json:"isLocked,omitempty"`
