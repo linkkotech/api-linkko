@@ -5,30 +5,29 @@ import (
 	"time"
 
 	"github.com/go-playground/validator/v10"
-	"github.com/google/uuid"
 )
 
 // Contact representa um contato no CRM com isolamento multi-tenant.
-// Campos mapeados para o schema contacts (000002_contacts.up.sql).
+// Campos mapeados para o schema real do Prisma (Contact table).
 //
-// IMPORTANTE: ActorID (conceito Go) mapeia para owner_id (campo DB).
+// IMPORTANTE: ActorID (conceito Go) mapeia para ownerId (campo DB).
 // Actor = User ou AI Agent que "possui" o contato.
 type Contact struct {
-	// Identificadores - Type safety com uuid.UUID
-	ID          uuid.UUID `json:"id" db:"id"`
-	WorkspaceID uuid.UUID `json:"workspaceId" db:"workspace_id"` // Imutável após criação
+	// Identificadores - IDs são TEXT no Prisma
+	ID          string `json:"id" db:"id"`
+	WorkspaceID string `json:"workspaceId" db:"workspaceId"` // Imutável após criação
 
-	// Dados de contato
-	Name  string  `json:"name" db:"name"`
-	Email string  `json:"email" db:"email"`
-	Phone *string `json:"phone,omitempty" db:"phone"`
+	// Dados de contato - Schema real usa fullName
+	FullName string  `json:"fullName" db:"fullName"`
+	Email    string  `json:"email" db:"email"`
+	Phone    *string `json:"phone,omitempty" db:"phone"`
 
 	// Relacionamentos
-	CompanyID *uuid.UUID `json:"companyId,omitempty" db:"company_id"`
+	CompanyID *string `json:"companyId,omitempty" db:"companyId"`
 
 	// Actor (owner) - Conceito unificado para User ou AI Agent
-	// DB: owner_id | Conceito: ActorID
-	ActorID uuid.UUID `json:"actorId" db:"owner_id"`
+	// DB: ownerId | Conceito: ActorID
+	ActorID string `json:"actorId" db:"ownerId"`
 
 	// Metadata
 	Tags         []string               `json:"tags" db:"tags"`
@@ -46,17 +45,17 @@ type Contact struct {
 // WorkspaceID é sempre injetado do path parameter (nunca do body).
 type CreateContactRequest struct {
 	// Dados obrigatórios
-	Name  string `json:"name" validate:"required,min=1,max=255"`
-	Email string `json:"email" validate:"required,email,max=255"`
+	FullName string `json:"fullName" validate:"required,min=1,max=255"`
+	Email    string `json:"email" validate:"required,email,max=255"`
 
 	// Dados opcionais
 	Phone *string `json:"phone,omitempty" validate:"omitempty,max=50"`
 
-	// Relacionamentos opcionais
-	CompanyID *uuid.UUID `json:"companyId,omitempty" validate:"omitempty,uuid4"`
+	// Relacionamentos opcionais - IDs são TEXT
+	CompanyID *string `json:"companyId,omitempty"`
 
 	// Actor (owner) - Opcional: se nil, usa claims.ActorID do JWT
-	ActorID *uuid.UUID `json:"actorId,omitempty" validate:"omitempty,uuid4"`
+	ActorID *string `json:"actorId,omitempty"`
 
 	// Metadata
 	Tags         []string               `json:"tags,omitempty" validate:"omitempty,max=20,dive,min=1"`
@@ -73,13 +72,13 @@ type CreateContactRequest struct {
 // WorkspaceID e ID não podem ser atualizados (imutáveis).
 type UpdateContactRequest struct {
 	// Dados
-	Name  *string `json:"name,omitempty" validate:"omitempty,min=1,max=255"`
-	Email *string `json:"email,omitempty" validate:"omitempty,email,max=255"`
-	Phone *string `json:"phone,omitempty" validate:"omitempty,max=50"`
+	FullName *string `json:"fullName,omitempty" validate:"omitempty,min=1,max=255"`
+	Email    *string `json:"email,omitempty" validate:"omitempty,email,max=255"`
+	Phone    *string `json:"phone,omitempty" validate:"omitempty,max=50"`
 
-	// Relacionamentos
-	CompanyID *uuid.UUID `json:"companyId,omitempty" validate:"omitempty,uuid4"`
-	ActorID   *uuid.UUID `json:"actorId,omitempty" validate:"omitempty,uuid4"`
+	// Relacionamentos - IDs são TEXT
+	CompanyID *string `json:"companyId,omitempty"`
+	ActorID   *string `json:"actorId,omitempty"`
 
 	// Metadata
 	Tags         *[]string              `json:"tags,omitempty" validate:"omitempty,max=20,dive,min=1"`
@@ -91,18 +90,18 @@ type UpdateContactRequest struct {
 // WorkspaceID é sempre obrigatório (multi-tenant isolation).
 // ActorID filtra contatos por "dono" (antes chamado OwnerID).
 type ListContactsParams struct {
-	// Multi-tenant isolation (obrigatório)
-	WorkspaceID uuid.UUID
+	// Multi-tenant isolation (obrigatório) - ID é TEXT
+	WorkspaceID string
 
 	// Paginação
 	Limit  int
 	Cursor *string // RFC3339 timestamp ou ULID
 	Sort   string  // "created_at:desc", "name:asc", etc.
 
-	// Filtros
-	Query     *string    // Full-text search (name + email)
-	ActorID   *uuid.UUID // Filter by actor (owner)
-	CompanyID *uuid.UUID // Filter by company
+	// Filtros - IDs são TEXT
+	Query     *string // Full-text search (name + email)
+	ActorID   *string // Filter by actor (owner)
+	CompanyID *string // Filter by company
 }
 
 // ContactListResponse resposta paginada de contatos.
@@ -118,10 +117,10 @@ type ContactListResponse struct {
 }
 
 // Validate valida o CreateContactRequest.
-// Sanitiza Name (trim whitespace) antes da validação.
+// Sanitiza FullName (trim whitespace) antes da validação.
 func (r *CreateContactRequest) Validate() error {
 	// Sanitização: remover espaços em branco extras
-	r.Name = strings.TrimSpace(r.Name)
+	r.FullName = strings.TrimSpace(r.FullName)
 	if r.Phone != nil {
 		trimmed := strings.TrimSpace(*r.Phone)
 		r.Phone = &trimmed
@@ -136,9 +135,9 @@ func (r *CreateContactRequest) Validate() error {
 // Sanitiza campos de string antes da validação.
 func (r *UpdateContactRequest) Validate() error {
 	// Sanitização: remover espaços em branco extras
-	if r.Name != nil {
-		trimmed := strings.TrimSpace(*r.Name)
-		r.Name = &trimmed
+	if r.FullName != nil {
+		trimmed := strings.TrimSpace(*r.FullName)
+		r.FullName = &trimmed
 	}
 	if r.Phone != nil {
 		trimmed := strings.TrimSpace(*r.Phone)

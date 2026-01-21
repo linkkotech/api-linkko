@@ -107,7 +107,7 @@ func TestLogger_SanitizesSecrets(t *testing.T) {
 		"phone",
 	}
 
-	for _, _ = range forbiddenFields {
+	for range forbiddenFields {
 		// In production, we'd capture output and verify [REDACTED]
 		// For now, ensure it doesn't panic
 		log.Info(ctx, "test with forbidden field",

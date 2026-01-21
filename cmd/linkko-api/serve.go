@@ -12,14 +12,12 @@ import (
 	"linkko-api/internal/auth"
 	"linkko-api/internal/config"
 	"linkko-api/internal/database"
-
-	// "linkko-api/internal/http/handler" // TODO: Uncomment when handler is fixed
+	"linkko-api/internal/http/handler"
 	"linkko-api/internal/http/middleware"
 	"linkko-api/internal/observability/logger"
-
-	// "linkko-api/internal/ratelimit" // TODO: Uncomment when handler is fixed
+	"linkko-api/internal/ratelimit"
 	"linkko-api/internal/repo"
-	// "linkko-api/internal/service" // TODO: Uncomment when handler is fixed
+	"linkko-api/internal/service"
 	"linkko-api/internal/telemetry"
 
 	"github.com/go-chi/chi/v5"
@@ -143,20 +141,26 @@ func runServe(cmd *cobra.Command, args []string) error {
 	// Initialize repositories
 	idempotencyRepo := repo.NewIdempotencyRepo(pool)
 	workspaceRepo := repo.NewWorkspaceRepository(pool)
-	// auditRepo := repo.NewAuditRepo(pool)
-	// contactRepo := repo.NewContactRepository(pool)
+	auditRepo := repo.NewAuditRepo(pool)
+	contactRepo := repo.NewContactRepository(pool)
+	taskRepo := repo.NewTaskRepository(pool)
+	companyRepo := repo.NewCompanyRepository(pool)
+	pipelineRepo := repo.NewPipelineRepository(pool)
 
 	// Initialize services
-	// contactService := service.NewContactService(contactRepo, auditRepo, workspaceRepo)
+	contactService := service.NewContactService(contactRepo, auditRepo, workspaceRepo, companyRepo)
+	taskService := service.NewTaskService(taskRepo, auditRepo, workspaceRepo)
+	companyService := service.NewCompanyService(companyRepo, auditRepo, workspaceRepo)
+	pipelineService := service.NewPipelineService(pipelineRepo, auditRepo, workspaceRepo)
 
 	// Initialize handlers
-	// contactHandler := handler.NewContactHandler(contactService)
-	_ = idempotencyRepo // TODO: Remove once contacts endpoints are uncommented
-	_ = workspaceRepo   // TODO: Remove once contacts endpoints are uncommented
+	contactHandler := handler.NewContactHandler(contactService)
+	taskHandler := handler.NewTaskHandler(taskService)
+	companyHandler := handler.NewCompanyHandler(companyService)
+	pipelineHandler := handler.NewPipelineHandler(pipelineService)
 
 	// Initialize rate limiter
-	// rateLimiter := ratelimit.NewRedisRateLimiter(redisClient, metrics.RateLimitRejections)
-	_ = metrics // TODO: Remove once metrics are used
+	rateLimiter := ratelimit.NewRedisRateLimiter(redisClient, metrics.RateLimitRejections)
 
 	// Create router
 	r := chi.NewRouter()
@@ -206,27 +210,78 @@ func runServe(cmd *cobra.Command, args []string) error {
 	})
 
 	// Protected routes with workspace isolation
-	// TODO: Uncomment when contact handler compilation errors are fixed
-	/*
-		r.Route("/v1/workspaces/{workspaceId}", func(r chi.Router) {
-			// Apply authentication, workspace validation, and rate limiting
-			r.Use(auth.JWTAuthMiddleware(resolver))
-			r.Use(middleware.WorkspaceMiddleware)
-			r.Use(middleware.RateLimitMiddleware(rateLimiter, cfg.RateLimitPerWorkspacePerMin))
+	r.Route("/v1/workspaces/{workspaceId}", func(r chi.Router) {
+		// Apply authentication, workspace validation, and rate limiting
+		r.Use(auth.JWTAuthMiddleware(resolver))
+		r.Use(middleware.WorkspaceMiddleware)
+		r.Use(middleware.RateLimitMiddleware(rateLimiter, cfg.RateLimitPerWorkspacePerMin))
 
-			// Contacts endpoints
-			r.Route("/contacts", func(r chi.Router) {
-				r.Get("/", contactHandler.ListContacts)
-				r.With(middleware.IdempotencyMiddleware(idempotencyRepo)).Post("/", contactHandler.CreateContact)
+		// Contacts endpoints
+		r.Route("/contacts", func(r chi.Router) {
+			r.Get("/", contactHandler.ListContacts)
+			r.With(middleware.IdempotencyMiddleware(idempotencyRepo)).Post("/", contactHandler.CreateContact)
 
-				r.Route("/{contactId}", func(r chi.Router) {
-					r.Get("/", contactHandler.GetContact)
-					r.With(middleware.IdempotencyMiddleware(idempotencyRepo)).Patch("/", contactHandler.UpdateContact)
-					r.Delete("/", contactHandler.DeleteContact)
+			r.Route("/{contactId}", func(r chi.Router) {
+				r.Get("/", contactHandler.GetContact)
+				r.With(middleware.IdempotencyMiddleware(idempotencyRepo)).Patch("/", contactHandler.UpdateContact)
+				r.Delete("/", contactHandler.DeleteContact)
+			})
+		})
+
+		// Tasks endpoints (NEW)
+		r.Route("/tasks", func(r chi.Router) {
+			r.Get("/", taskHandler.ListTasks)
+			r.With(middleware.IdempotencyMiddleware(idempotencyRepo)).Post("/", taskHandler.CreateTask)
+
+			r.Route("/{taskId}", func(r chi.Router) {
+				r.Get("/", taskHandler.GetTask)
+				r.With(middleware.IdempotencyMiddleware(idempotencyRepo)).Patch("/", taskHandler.UpdateTask)
+				r.Delete("/", taskHandler.DeleteTask)
+
+				// Kanban drag-and-drop (action endpoint)
+				r.With(middleware.IdempotencyMiddleware(idempotencyRepo)).Post("/:move", taskHandler.MoveTask)
+			})
+		})
+
+		// Companies endpoints (NEW)
+		r.Route("/companies", func(r chi.Router) {
+			r.Get("/", companyHandler.ListCompanies)
+			r.With(middleware.IdempotencyMiddleware(idempotencyRepo)).Post("/", companyHandler.CreateCompany)
+
+			r.Route("/{companyId}", func(r chi.Router) {
+				r.Get("/", companyHandler.GetCompany)
+				r.With(middleware.IdempotencyMiddleware(idempotencyRepo)).Patch("/", companyHandler.UpdateCompany)
+				r.Delete("/", companyHandler.DeleteCompany)
+			})
+		})
+
+		// Pipelines endpoints (NEW)
+		r.Route("/pipelines", func(r chi.Router) {
+			r.Get("/", pipelineHandler.ListPipelines)
+			r.With(middleware.IdempotencyMiddleware(idempotencyRepo)).Post("/", pipelineHandler.CreatePipeline)
+
+			// Action endpoints
+			r.With(middleware.IdempotencyMiddleware(idempotencyRepo)).Post("/:create-with-stages", pipelineHandler.CreatePipelineWithStages)
+			r.With(middleware.IdempotencyMiddleware(idempotencyRepo)).Post("/:seed-default", pipelineHandler.SeedDefaultPipeline)
+
+			r.Route("/{pipelineId}", func(r chi.Router) {
+				r.Get("/", pipelineHandler.GetPipeline)
+				r.With(middleware.IdempotencyMiddleware(idempotencyRepo)).Patch("/", pipelineHandler.UpdatePipeline)
+				r.Delete("/", pipelineHandler.DeletePipeline)
+
+				// Stages nested endpoints
+				r.Route("/stages", func(r chi.Router) {
+					r.Get("/", pipelineHandler.ListStages)
+					r.With(middleware.IdempotencyMiddleware(idempotencyRepo)).Post("/", pipelineHandler.CreateStage)
+
+					r.Route("/{stageId}", func(r chi.Router) {
+						r.With(middleware.IdempotencyMiddleware(idempotencyRepo)).Patch("/", pipelineHandler.UpdateStage)
+						r.Delete("/", pipelineHandler.DeleteStage)
+					})
 				})
 			})
 		})
-	*/
+	})
 
 	// Create HTTP server
 	server := &http.Server{

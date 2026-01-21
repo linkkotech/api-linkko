@@ -49,10 +49,10 @@ func (r Role) IsValid() bool {
 // WorkspaceRole represents a role definition in the system.
 // This maps to the WorkspaceRole table which is the source of truth.
 type WorkspaceRole struct {
-	ID          string    `json:"id" db:"id"`                     // Canonical role ID (e.g., 'work_admin')
-	Name        string    `json:"name" db:"name"`                 // Display name (e.g., 'Workspace Admin')
-	Description *string   `json:"description" db:"description"`   // Human-readable description
-	CreatedAt   time.Time `json:"createdAt" db:"created_at"`      // When role was defined
+	ID          string    `json:"id" db:"id"`                   // Canonical role ID (e.g., 'work_admin')
+	Name        string    `json:"name" db:"name"`               // Display name (e.g., 'Workspace Admin')
+	Description *string   `json:"description" db:"description"` // Human-readable description
+	CreatedAt   time.Time `json:"createdAt" db:"created_at"`    // When role was defined
 }
 
 // =====================================================
@@ -70,9 +70,9 @@ type WorkspaceMember struct {
 	WorkspaceRoleID Role `json:"workspaceRoleId" db:"workspaceRoleId"` // Role ID (work_admin, etc.)
 
 	// Invitation metadata
-	InvitedBy  *uuid.UUID `json:"invitedBy,omitempty" db:"invited_by"`     // User who invited this member
-	InvitedAt  time.Time  `json:"invitedAt" db:"invited_at"`               // When invitation was sent
-	AcceptedAt *time.Time `json:"acceptedAt,omitempty" db:"accepted_at"`   // When invitation was accepted (NULL if pending)
+	InvitedBy  *uuid.UUID `json:"invitedBy,omitempty" db:"invited_by"`   // User who invited this member
+	InvitedAt  time.Time  `json:"invitedAt" db:"invited_at"`             // When invitation was sent
+	AcceptedAt *time.Time `json:"acceptedAt,omitempty" db:"accepted_at"` // When invitation was accepted (NULL if pending)
 
 	// Timestamps
 	CreatedAt time.Time `json:"createdAt" db:"created_at"`
@@ -118,7 +118,7 @@ func CanManageWorkspace(role Role) bool {
 // =====================================================
 // Permission Matrix Documentation
 // =====================================================
-// 
+//
 // | Operation          | Admin | Manager | User | Viewer |
 // |--------------------|-------|---------|------|--------|
 // | List Contacts      | ✅    | ✅      | ✅   | ✅     |

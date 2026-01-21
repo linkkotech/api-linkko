@@ -25,13 +25,15 @@ type ContactService struct {
 	contactRepo   *repo.ContactRepository
 	auditRepo     *repo.AuditRepo
 	workspaceRepo *repo.WorkspaceRepository
+	companyRepo   *repo.CompanyRepository // For CompanyID validation
 }
 
-func NewContactService(contactRepo *repo.ContactRepository, auditRepo *repo.AuditRepo, workspaceRepo *repo.WorkspaceRepository) *ContactService {
+func NewContactService(contactRepo *repo.ContactRepository, auditRepo *repo.AuditRepo, workspaceRepo *repo.WorkspaceRepository, companyRepo *repo.CompanyRepository) *ContactService {
 	return &ContactService{
 		contactRepo:   contactRepo,
 		auditRepo:     auditRepo,
 		workspaceRepo: workspaceRepo,
+		companyRepo:   companyRepo,
 	}
 }
 
@@ -125,8 +127,13 @@ func (s *ContactService) CreateContact(ctx context.Context, workspaceID, actorID
 
 	// Business validation: if company_id provided, validate it belongs to workspace
 	if req.CompanyID != nil {
-		// Note: In production, this would call CompanyRepository.ExistsInWorkspace
-		// Skipping for now as CompanyRepository is not yet implemented
+		exists, err := s.companyRepo.ExistsInWorkspace(ctx, workspaceID, *req.CompanyID)
+		if err != nil {
+			return nil, fmt.Errorf("validate company: %w", err)
+		}
+		if !exists {
+			return nil, ErrInvalidCompany
+		}
 	}
 
 	contact := &domain.Contact{
@@ -214,7 +221,13 @@ func (s *ContactService) UpdateContact(ctx context.Context, workspaceID, contact
 
 	// Business validation: if company_id provided, validate it belongs to workspace
 	if req.CompanyID != nil {
-		// Note: In production, this would call CompanyRepository.ExistsInWorkspace
+		exists, err := s.companyRepo.ExistsInWorkspace(ctx, workspaceID, *req.CompanyID)
+		if err != nil {
+			return nil, fmt.Errorf("validate company: %w", err)
+		}
+		if !exists {
+			return nil, ErrInvalidCompany
+		}
 	}
 
 	contact, err := s.contactRepo.Update(ctx, workspaceID, contactID, req, current.UpdatedAt)
@@ -290,7 +303,7 @@ func (s *ContactService) DeleteContact(ctx context.Context, workspaceID, contact
 
 // getRequestID extracts request_id from context for audit logging.
 // In production, this would use a context key set by the request middleware.
-func getRequestID(ctx context.Context) string {
+func getRequestID(_ context.Context) string {
 	// Placeholder: in production, extract from context
 	// requestID, ok := ctx.Value("request_id").(string)
 	// if !ok { return "" }

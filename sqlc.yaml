@@ -1,0 +1,37 @@
+version: "2"
+
+sql:
+  - engine: "postgresql"
+    queries: "internal/repo/queries"
+    schema: "internal/repo/sqlc/schema.sql"
+    gen:
+      go:
+        package: "sqlc"
+        out: "internal/repo/sqlc"
+        sql_package: "pgx/v5"
+        emit_json_tags: true
+        emit_interface: true
+        emit_pointers_for_null_types: true
+        emit_empty_slices: true
+        json_tags_case_style: "camel"
+        overrides:
+          # ==========================================
+          # NOTA: IDs são TEXT no Prisma, não UUID
+          # ENUMs são gerados pelo sqlc a partir do schema
+          # ==========================================
+          
+          # ==========================================
+          # JSONB Mapping
+          # ==========================================
+          - db_type: "jsonb"
+            go_type:
+              import: "encoding/json"
+              type: "RawMessage"
+          
+          # ==========================================
+          # Array Mapping (TEXT[])
+          # ==========================================
+          - db_type: "text[]"
+            go_type:
+              type: "StringSlice"
+              import: "github.com/jackc/pgx/v5/pgtype"

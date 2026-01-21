@@ -84,7 +84,7 @@ func (r *ContactRepository) List(ctx context.Context, params domain.ListContacts
 		var c domain.Contact
 		var deletedAt sql.NullTime
 		err := rows.Scan(
-			&c.ID, &c.WorkspaceID, &c.Name, &c.Email, &c.Phone,
+			&c.ID, &c.WorkspaceID, &c.FullName, &c.Email, &c.Phone,
 			&c.ActorID, &c.CompanyID, &c.Tags, &c.CustomFields,
 			&c.CreatedAt, &c.UpdatedAt, &deletedAt,
 		)
@@ -123,7 +123,7 @@ func (r *ContactRepository) Get(ctx context.Context, workspaceID, contactID uuid
 	var c domain.Contact
 	var deletedAt sql.NullTime
 	err := r.pool.QueryRow(ctx, query, contactID, workspaceID).Scan(
-		&c.ID, &c.WorkspaceID, &c.Name, &c.Email, &c.Phone,
+		&c.ID, &c.WorkspaceID, &c.FullName, &c.Email, &c.Phone,
 		&c.ActorID, &c.CompanyID, &c.Tags, &c.CustomFields,
 		&c.CreatedAt, &c.UpdatedAt, &deletedAt,
 	)
@@ -154,7 +154,7 @@ func (r *ContactRepository) Create(ctx context.Context, contact *domain.Contact)
 
 	err := r.pool.QueryRow(
 		ctx, query,
-		contact.ID, contact.WorkspaceID, contact.Name, contact.Email, contact.Phone,
+		contact.ID, contact.WorkspaceID, contact.FullName, contact.Email, contact.Phone,
 		contact.ActorID, contact.CompanyID, contact.Tags, contact.CustomFields,
 	).Scan(&contact.CreatedAt, &contact.UpdatedAt)
 
@@ -193,9 +193,9 @@ func (r *ContactRepository) Update(ctx context.Context, workspaceID, contactID u
 	argIdx := 1
 	setClauses := []string{}
 
-	if updates.Name != nil {
+	if updates.FullName != nil {
 		setClauses = append(setClauses, fmt.Sprintf("name = $%d", argIdx))
-		args = append(args, *updates.Name)
+		args = append(args, *updates.FullName)
 		argIdx++
 	}
 	if updates.Email != nil {
@@ -240,7 +240,7 @@ func (r *ContactRepository) Update(ctx context.Context, workspaceID, contactID u
 
 	var c domain.Contact
 	err = r.pool.QueryRow(ctx, query, args...).Scan(
-		&c.ID, &c.WorkspaceID, &c.Name, &c.Email, &c.Phone,
+		&c.ID, &c.WorkspaceID, &c.FullName, &c.Email, &c.Phone,
 		&c.ActorID, &c.CompanyID, &c.Tags, &c.CustomFields,
 		&c.CreatedAt, &c.UpdatedAt,
 	)
