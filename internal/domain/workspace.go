@@ -68,7 +68,7 @@ type WorkspaceMember struct {
 	WorkspaceRoleID Role `json:"workspaceRoleId" db:"workspaceRoleId"` // Role ID (work_admin, etc.)
 
 	// Invitation metadata
-	InvitedBy  *string `json:"invitedBy,omitempty" db:"invited_by"`   // User who invited this member
+	InvitedBy  *string    `json:"invitedBy,omitempty" db:"invited_by"`   // User who invited this member
 	InvitedAt  time.Time  `json:"invitedAt" db:"invited_at"`             // When invitation was sent
 	AcceptedAt *time.Time `json:"acceptedAt,omitempty" db:"accepted_at"` // When invitation was accepted (NULL if pending)
 

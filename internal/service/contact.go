@@ -2,13 +2,15 @@ package service
 
 import (
 	"context"
+	"crypto/rand"
+	"encoding/base32"
 	"errors"
 	"fmt"
+	"strings"
+	"time"
 
 	"linkko-api/internal/domain"
 	"linkko-api/internal/repo"
-
-	"github.com/google/uuid"
 )
 
 var (
@@ -37,10 +39,17 @@ func NewContactService(contactRepo *repo.ContactRepository, auditRepo *repo.Audi
 	}
 }
 
+// generateID cria um ID compatível com Prisma (cuid-like)
+func generateID() string {
+	b := make([]byte, 16)
+	rand.Read(b)
+	return "c" + strings.ToLower(base32.StdEncoding.EncodeToString(b)[:24])
+}
+
 // ListContacts retrieves contacts with RBAC validation.
 // Permission: all workspace members can list contacts.
 // Role is fetched from database to enforce real-time authorization.
-func (s *ContactService) ListContacts(ctx context.Context, workspaceID, actorID uuid.UUID, params domain.ListContactsParams) (*domain.ContactListResponse, error) {
+func (s *ContactService) ListContacts(ctx context.Context, workspaceID, actorID string, params domain.ListContactsParams) (*domain.ContactListResponse, error) {
 	// Fetch user's role in this workspace from database
 	role, err := s.workspaceRepo.GetMemberRole(ctx, actorID, workspaceID)
 	if err != nil {
@@ -77,7 +86,7 @@ func (s *ContactService) ListContacts(ctx context.Context, workspaceID, actorID 
 // GetContact retrieves a single contact with RBAC validation.
 // Permission: all workspace members can view contacts.
 // Role is fetched from database to enforce real-time authorization.
-func (s *ContactService) GetContact(ctx context.Context, workspaceID, contactID, actorID uuid.UUID) (*domain.Contact, error) {
+func (s *ContactService) GetContact(ctx context.Context, workspaceID, contactID, actorID string) (*domain.Contact, error) {
 	// Fetch user's role in this workspace from database
 	role, err := s.workspaceRepo.GetMemberRole(ctx, actorID, workspaceID)
 	if err != nil {
@@ -104,7 +113,7 @@ func (s *ContactService) GetContact(ctx context.Context, workspaceID, contactID,
 // CreateContact creates a new contact with RBAC and business validation.
 // Permission: admin, manager, user can create contacts. Viewer cannot.
 // Role is fetched from database to enforce real-time authorization.
-func (s *ContactService) CreateContact(ctx context.Context, workspaceID, actorID uuid.UUID, req *domain.CreateContactRequest) (*domain.Contact, error) {
+func (s *ContactService) CreateContact(ctx context.Context, workspaceID, actorID string, req *domain.CreateContactRequest) (*domain.Contact, error) {
 	// Fetch user's role in this workspace from database
 	role, err := s.workspaceRepo.GetMemberRole(ctx, actorID, workspaceID)
 	if err != nil {
@@ -137,9 +146,9 @@ func (s *ContactService) CreateContact(ctx context.Context, workspaceID, actorID
 	}
 
 	contact := &domain.Contact{
-		ID:          uuid.New(),
+		ID:          generateID(),
 		WorkspaceID: workspaceID,
-		Name:        req.Name,
+		FullName:    req.FullName,
 		Email:       req.Email,
 		ActorID:     actorID, // Use current actor (user/agent) as owner if not specified
 	}
@@ -193,7 +202,7 @@ func (s *ContactService) CreateContact(ctx context.Context, workspaceID, actorID
 // UpdateContact updates a contact with RBAC, business validation, and optimistic concurrency.
 // Permission: admin, manager, user can update. Viewer cannot.
 // Role is fetched from database to enforce real-time authorization.
-func (s *ContactService) UpdateContact(ctx context.Context, workspaceID, contactID, actorID uuid.UUID, req *domain.UpdateContactRequest) (*domain.Contact, error) {
+func (s *ContactService) UpdateContact(ctx context.Context, workspaceID, contactID, actorID string, req *domain.UpdateContactRequest) (*domain.Contact, error) {
 	// Fetch user's role in this workspace from database
 	role, err := s.workspaceRepo.GetMemberRole(ctx, actorID, workspaceID)
 	if err != nil {
@@ -261,7 +270,7 @@ func (s *ContactService) UpdateContact(ctx context.Context, workspaceID, contact
 // DeleteContact soft deletes a contact with RBAC validation.
 // Permission: only admin and manager can delete contacts.
 // Role is fetched from database to enforce real-time authorization.
-func (s *ContactService) DeleteContact(ctx context.Context, workspaceID, contactID, actorID uuid.UUID) error {
+func (s *ContactService) DeleteContact(ctx context.Context, workspaceID, contactID, actorID string) error {
 	// Fetch user's role in this workspace from database
 	role, err := s.workspaceRepo.GetMemberRole(ctx, actorID, workspaceID)
 	if err != nil {

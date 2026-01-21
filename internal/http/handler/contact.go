@@ -13,7 +13,6 @@ import (
 	"linkko-api/internal/service"
 
 	"github.com/go-chi/chi/v5"
-	"github.com/google/uuid"
 	"go.uber.org/zap"
 )
 
@@ -30,12 +29,7 @@ func (h *ContactHandler) ListContacts(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 	log := logger.GetLogger(ctx)
 
-	workspaceIDStr := chi.URLParam(r, "workspaceId")
-	workspaceID, err := uuid.Parse(workspaceIDStr)
-	if err != nil {
-		writeError(w, ctx, log, http.StatusBadRequest, "INVALID_WORKSPACE_ID", "workspaceId must be a valid UUID")
-		return
-	}
+	workspaceID := chi.URLParam(r, "workspaceId")
 
 	claims, ok := auth.GetClaims(ctx)
 	if !ok {
@@ -43,12 +37,7 @@ func (h *ContactHandler) ListContacts(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	actorID, err := uuid.Parse(claims.ActorID)
-	if err != nil {
-		log.Error(ctx, "invalid actorID in claims", zap.String("actorId", claims.ActorID), zap.Error(err))
-		writeError(w, ctx, log, http.StatusInternalServerError, "INTERNAL_ERROR", "invalid authentication claims")
-		return
-	}
+	actorID := claims.ActorID
 
 	params := domain.ListContactsParams{
 		Limit: 50, // default
@@ -67,22 +56,12 @@ func (h *ContactHandler) ListContacts(w http.ResponseWriter, r *http.Request) {
 		params.Limit = limit
 	}
 
-	if actorIdStr := r.URL.Query().Get("actorId"); actorIdStr != "" {
-		actorFilterID, err := uuid.Parse(actorIdStr)
-		if err != nil {
-			writeError(w, ctx, log, http.StatusBadRequest, "INVALID_ACTOR_ID", "actorId must be a valid UUID")
-			return
-		}
-		params.ActorID = &actorFilterID
+	if actorId := r.URL.Query().Get("actorId"); actorId != "" {
+		params.ActorID = &actorId
 	}
 
-	if companyIdStr := r.URL.Query().Get("companyId"); companyIdStr != "" {
-		companyID, err := uuid.Parse(companyIdStr)
-		if err != nil {
-			writeError(w, ctx, log, http.StatusBadRequest, "INVALID_COMPANY_ID", "companyId must be a valid UUID")
-			return
-		}
-		params.CompanyID = &companyID
+	if companyId := r.URL.Query().Get("companyId"); companyId != "" {
+		params.CompanyID = &companyId
 	}
 
 	if search := r.URL.Query().Get("q"); search != "" {
@@ -90,8 +69,8 @@ func (h *ContactHandler) ListContacts(w http.ResponseWriter, r *http.Request) {
 	}
 
 	log.Info(ctx, "listing contacts",
-		zap.String("workspaceId", workspaceID.String()),
-		zap.String("actorId", actorID.String()),
+		zap.String("workspaceId", workspaceID),
+		zap.String("actorId", actorID),
 		zap.Int("limit", params.Limit),
 	)
 
@@ -115,19 +94,8 @@ func (h *ContactHandler) GetContact(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 	log := logger.GetLogger(ctx)
 
-	workspaceIDStr := chi.URLParam(r, "workspaceId")
-	workspaceID, err := uuid.Parse(workspaceIDStr)
-	if err != nil {
-		writeError(w, ctx, log, http.StatusBadRequest, "INVALID_WORKSPACE_ID", "workspaceId must be a valid UUID")
-		return
-	}
-
-	contactIDStr := chi.URLParam(r, "contactId")
-	contactID, err := uuid.Parse(contactIDStr)
-	if err != nil {
-		writeError(w, ctx, log, http.StatusBadRequest, "INVALID_CONTACT_ID", "contactId must be a valid UUID")
-		return
-	}
+	workspaceID := chi.URLParam(r, "workspaceId")
+	contactID := chi.URLParam(r, "contactId")
 
 	claims, ok := auth.GetClaims(ctx)
 	if !ok {
@@ -135,17 +103,12 @@ func (h *ContactHandler) GetContact(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	actorID, err := uuid.Parse(claims.ActorID)
-	if err != nil {
-		log.Error(ctx, "invalid actorID in claims", zap.String("actorId", claims.ActorID), zap.Error(err))
-		writeError(w, ctx, log, http.StatusInternalServerError, "INTERNAL_ERROR", "invalid authentication claims")
-		return
-	}
+	actorID := claims.ActorID
 
 	log.Info(ctx, "fetching contact",
-		zap.String("workspaceId", workspaceID.String()),
-		zap.String("contactId", contactID.String()),
-		zap.String("actorId", actorID.String()),
+		zap.String("workspaceId", workspaceID),
+		zap.String("contactId", contactID),
+		zap.String("actorId", actorID),
 	)
 
 	// Service now fetches role from database internally
@@ -167,12 +130,7 @@ func (h *ContactHandler) CreateContact(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 	log := logger.GetLogger(ctx)
 
-	workspaceIDStr := chi.URLParam(r, "workspaceId")
-	workspaceID, err := uuid.Parse(workspaceIDStr)
-	if err != nil {
-		writeError(w, ctx, log, http.StatusBadRequest, "INVALID_WORKSPACE_ID", "workspaceId must be a valid UUID")
-		return
-	}
+	workspaceID := chi.URLParam(r, "workspaceId")
 
 	claims, ok := auth.GetClaims(ctx)
 	if !ok {
@@ -180,12 +138,7 @@ func (h *ContactHandler) CreateContact(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	actorID, err := uuid.Parse(claims.ActorID)
-	if err != nil {
-		log.Error(ctx, "invalid actorID in claims", zap.String("actorId", claims.ActorID), zap.Error(err))
-		writeError(w, ctx, log, http.StatusInternalServerError, "INTERNAL_ERROR", "invalid authentication claims")
-		return
-	}
+	actorID := claims.ActorID
 
 	var req domain.CreateContactRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
@@ -201,9 +154,9 @@ func (h *ContactHandler) CreateContact(w http.ResponseWriter, r *http.Request) {
 	}
 
 	log.Info(ctx, "creating contact",
-		zap.String("workspaceId", workspaceID.String()),
+		zap.String("workspaceId", workspaceID),
 		zap.String("email", req.Email),
-		zap.String("actorId", actorID.String()),
+		zap.String("actorId", actorID),
 	)
 
 	// Service now fetches role from database internally
@@ -218,7 +171,7 @@ func (h *ContactHandler) CreateContact(w http.ResponseWriter, r *http.Request) {
 		zap.String("email", contact.Email),
 	)
 
-	w.Header().Set("Location", "/v1/workspaces/"+workspaceID.String()+"/contacts/"+contact.ID.String())
+	w.Header().Set("Location", "/v1/workspaces/"+workspaceID+"/contacts/"+contact.ID.String())
 	writeJSON(w, http.StatusCreated, contact)
 }
 
@@ -227,19 +180,8 @@ func (h *ContactHandler) UpdateContact(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 	log := logger.GetLogger(ctx)
 
-	workspaceIDStr := chi.URLParam(r, "workspaceId")
-	workspaceID, err := uuid.Parse(workspaceIDStr)
-	if err != nil {
-		writeError(w, ctx, log, http.StatusBadRequest, "INVALID_WORKSPACE_ID", "workspaceId must be a valid UUID")
-		return
-	}
-
-	contactIDStr := chi.URLParam(r, "contactId")
-	contactID, err := uuid.Parse(contactIDStr)
-	if err != nil {
-		writeError(w, ctx, log, http.StatusBadRequest, "INVALID_CONTACT_ID", "contactId must be a valid UUID")
-		return
-	}
+	workspaceID := chi.URLParam(r, "workspaceId")
+	contactID := chi.URLParam(r, "contactId")
 
 	claims, ok := auth.GetClaims(ctx)
 	if !ok {
@@ -247,12 +189,7 @@ func (h *ContactHandler) UpdateContact(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	actorID, err := uuid.Parse(claims.ActorID)
-	if err != nil {
-		log.Error(ctx, "invalid actorID in claims", zap.String("actorId", claims.ActorID), zap.Error(err))
-		writeError(w, ctx, log, http.StatusInternalServerError, "INTERNAL_ERROR", "invalid authentication claims")
-		return
-	}
+	actorID := claims.ActorID
 
 	var req domain.UpdateContactRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
@@ -268,9 +205,9 @@ func (h *ContactHandler) UpdateContact(w http.ResponseWriter, r *http.Request) {
 	}
 
 	log.Info(ctx, "updating contact",
-		zap.String("workspaceId", workspaceID.String()),
-		zap.String("contactId", contactID.String()),
-		zap.String("actorId", actorID.String()),
+		zap.String("workspaceId", workspaceID),
+		zap.String("contactId", contactID),
+		zap.String("actorId", actorID),
 	)
 
 	// Service now fetches role from database internally
@@ -292,19 +229,8 @@ func (h *ContactHandler) DeleteContact(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 	log := logger.GetLogger(ctx)
 
-	workspaceIDStr := chi.URLParam(r, "workspaceId")
-	workspaceID, err := uuid.Parse(workspaceIDStr)
-	if err != nil {
-		writeError(w, ctx, log, http.StatusBadRequest, "INVALID_WORKSPACE_ID", "workspaceId must be a valid UUID")
-		return
-	}
-
-	contactIDStr := chi.URLParam(r, "contactId")
-	contactID, err := uuid.Parse(contactIDStr)
-	if err != nil {
-		writeError(w, ctx, log, http.StatusBadRequest, "INVALID_CONTACT_ID", "contactId must be a valid UUID")
-		return
-	}
+	workspaceID := chi.URLParam(r, "workspaceId")
+	contactID := chi.URLParam(r, "contactId")
 
 	claims, ok := auth.GetClaims(ctx)
 	if !ok {
@@ -312,17 +238,12 @@ func (h *ContactHandler) DeleteContact(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	actorID, err := uuid.Parse(claims.ActorID)
-	if err != nil {
-		log.Error(ctx, "invalid actorID in claims", zap.String("actorId", claims.ActorID), zap.Error(err))
-		writeError(w, ctx, log, http.StatusInternalServerError, "INTERNAL_ERROR", "invalid authentication claims")
-		return
-	}
+	actorID := claims.ActorID
 
 	log.Info(ctx, "deleting contact",
-		zap.String("workspaceId", workspaceID.String()),
-		zap.String("contactId", contactID.String()),
-		zap.String("actorId", actorID.String()),
+		zap.String("workspaceId", workspaceID),
+		zap.String("contactId", contactID),
+		zap.String("actorId", actorID),
 	)
 
 	// Service now fetches role from database internally and validates delete permission
@@ -333,7 +254,7 @@ func (h *ContactHandler) DeleteContact(w http.ResponseWriter, r *http.Request) {
 	}
 
 	log.Info(ctx, "contact deleted successfully",
-		zap.String("contactId", contactID.String()),
+		zap.String("contactId", contactID),
 	)
 
 	w.WriteHeader(http.StatusNoContent)

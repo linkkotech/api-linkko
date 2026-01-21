@@ -9,8 +9,21 @@ import (
 )
 
 type Querier interface {
+	// Verifica se um contato existe no workspace (usado por validações).
+	ContactExistsInWorkspace(ctx context.Context, arg ContactExistsInWorkspaceParams) (bool, error)
+	// Cria um novo contato no workspace (ID gerado pela aplicação).
+	CreateContact(ctx context.Context, arg CreateContactParams) (CreateContactRow, error)
 	// Criar nova task retornando o registro completo
 	CreateTask(ctx context.Context, arg CreateTaskParams) (CreateTaskRow, error)
+	// =====================================================
+	// CONTACTS QUERIES - SQLc Generated
+	// =====================================================
+	// Tabela: "Contact"
+	// Schema: camelCase com aspas duplas
+	// IDs: TEXT (não UUID)
+	// =====================================================
+	// Retorna um contato específico de um workspace (IDOR protection).
+	GetContact(ctx context.Context, arg GetContactParams) (GetContactRow, error)
 	// =====================================================
 	// Task Queries (Schema Real Sincronizado)
 	// =====================================================
@@ -19,8 +32,17 @@ type Querier interface {
 	// =====================================================
 	// Buscar task por ID com isolamento multi-tenant
 	GetTask(ctx context.Context, arg GetTaskParams) (GetTaskRow, error)
+	// Lista contatos de um workspace com paginação cursor-based (created_at DESC).
+	// Filtros opcionais: ownerId, companyId, lifecycleStage, query (fulltext search).
+	ListContacts(ctx context.Context, arg ListContactsParams) ([]ListContactsRow, error)
 	// Listar tasks com filtros opcionais
 	ListTasks(ctx context.Context, arg ListTasksParams) ([]ListTasksRow, error)
+	// Busca fulltext em contatos (usado por autocomplete/search).
+	SearchContactsByText(ctx context.Context, arg SearchContactsByTextParams) ([]SearchContactsByTextRow, error)
+	// Soft delete de um contato (marca deletedAt + deletedById).
+	SoftDeleteContact(ctx context.Context, arg SoftDeleteContactParams) error
+	// Atualiza um contato existente (IDOR protection + optimistic locking via updatedAt).
+	UpdateContact(ctx context.Context, arg UpdateContactParams) (UpdateContactRow, error)
 }
 
 var _ Querier = (*Queries)(nil)
