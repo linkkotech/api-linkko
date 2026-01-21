@@ -23,6 +23,7 @@ import (
 	"github.com/go-chi/chi/v5"
 	"github.com/redis/go-redis/v9"
 	"github.com/spf13/cobra"
+	"go.opentelemetry.io/otel/metric"
 	sdkmetric "go.opentelemetry.io/otel/sdk/metric"
 	sdktrace "go.opentelemetry.io/otel/sdk/trace"
 	"go.uber.org/zap"
@@ -189,7 +190,11 @@ func runServe(cmd *cobra.Command, args []string) error {
 	portfolioHandler := handler.NewPortfolioHandler(portfolioService)
 
 	// Initialize rate limiter
-	rateLimiter := ratelimit.NewRedisRateLimiter(redisClient, metrics.RateLimitRejections)
+	var rateLimitCounter metric.Int64Counter
+	if metrics != nil {
+		rateLimitCounter = metrics.RateLimitRejections
+	}
+	rateLimiter := ratelimit.NewRedisRateLimiter(redisClient, rateLimitCounter)
 
 	// Create router
 	r := chi.NewRouter()
@@ -200,7 +205,9 @@ func runServe(cmd *cobra.Command, args []string) error {
 	r.Use(middleware.RecoveryMiddleware(log))            // 2. Catch panics before logging
 	r.Use(middleware.RequestLoggingMiddleware(log))      // 3. Log all requests with request_id
 	r.Use(telemetry.OTelMiddleware(cfg.OTELServiceName)) // 4. OpenTelemetry tracing
-	r.Use(telemetry.MetricsMiddleware(metrics))          // 5. Prometheus metrics
+	if metrics != nil {
+		r.Use(telemetry.MetricsMiddleware(metrics)) // 5. Prometheus metrics (optional)
+	}
 
 	// Public routes
 	// /health - Liveness probe (no dependencies checked)
