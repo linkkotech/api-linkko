@@ -6,8 +6,8 @@ import (
 
 // CustomClaims represents the custom JWT claims for the API
 type CustomClaims struct {
-	WorkspaceID string `json:"workspace_id"`
-	ActorID     string `json:"actor_id"`
+	WorkspaceID string `json:"workspaceId"`
+	ActorID     string `json:"actorId"`
 	jwt.RegisteredClaims
 }
 
