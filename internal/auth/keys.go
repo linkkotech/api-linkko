@@ -3,6 +3,7 @@ package auth
 import (
 	"crypto/rsa"
 	"fmt"
+	"strings"
 
 	"github.com/golang-jwt/jwt/v5"
 )
@@ -31,7 +32,14 @@ func (ks *KeyStore) LoadHS256Key(issuer, kid string, secret []byte) {
 
 // LoadRS256Key adds an RS256 public key for an issuer and kid
 func (ks *KeyStore) LoadRS256Key(issuer, kid string, publicKeyPEM string) error {
-	publicKey, err := jwt.ParseRSAPublicKeyFromPEM([]byte(publicKeyPEM))
+	// CORREÇÃO: Normalizar \n literais para quebras de linha reais
+	// Isso resolve o problema quando a chave vem de variáveis de ambiente
+	normalizedPEM := strings.ReplaceAll(publicKeyPEM, `\n`, "\n")
+	
+	// Também limpar espaços extras no início e fim
+	normalizedPEM = strings.TrimSpace(normalizedPEM)
+	
+	publicKey, err := jwt.ParseRSAPublicKeyFromPEM([]byte(normalizedPEM))
 	if err != nil {
 		return fmt.Errorf("failed to parse RSA public key: %w", err)
 	}
