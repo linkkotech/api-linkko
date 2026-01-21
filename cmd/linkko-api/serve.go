@@ -141,10 +141,20 @@ func runServe(cmd *cobra.Command, args []string) error {
 	log.Info(ctx, "initializing JWT authentication")
 	keyStore := auth.NewKeyStore()
 
-	// Load HS256 key for CRM web (decode from Base64)
-	secretBytes, err := base64.StdEncoding.DecodeString(cfg.JWTSecretCRMV1)
+	// Load HS256 key for CRM web (tolerant to both Base64 and plain text)
+	var secretBytes []byte
+	secretBytes, err = base64.StdEncoding.DecodeString(cfg.JWTSecretCRMV1)
 	if err != nil {
-		return fmt.Errorf("failed to decode JWT_SECRET_CRM_V1 from base64: %w", err)
+		// Fallback: treat as plain text secret (not Base64)
+		log.Info(ctx, "JWT_SECRET_CRM_V1 loaded as plain text (not base64-encoded)",
+			zap.Int("secret_length", len(cfg.JWTSecretCRMV1)),
+		)
+		secretBytes = []byte(cfg.JWTSecretCRMV1)
+	} else {
+		// Successfully decoded from Base64
+		log.Info(ctx, "JWT_SECRET_CRM_V1 loaded from base64",
+			zap.Int("decoded_length", len(secretBytes)),
+		)
 	}
 	keyStore.LoadHS256Key("linkko-crm-web", "v1", secretBytes)
 
