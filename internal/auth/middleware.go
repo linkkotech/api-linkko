@@ -23,16 +23,26 @@ func JWTAuthMiddleware(resolver *KeyResolver) func(http.Handler) http.Handler {
 			// Extract token from Authorization header
 			authHeader := r.Header.Get("Authorization")
 			if authHeader == "" {
-				log.Warn("missing authorization header")
-				http.Error(w, "missing authorization header", http.StatusUnauthorized)
+				log.Warn("authentication failed",
+					zap.String("auth_failure_reason", string(AuthFailureMissingAuthorization)),
+					zap.String("remote_addr", r.RemoteAddr),
+					zap.String("method", r.Method),
+					zap.String("path", r.URL.Path),
+				)
+				http.Error(w, "invalid token", http.StatusUnauthorized)
 				return
 			}
 
 			// Check Bearer format
 			parts := strings.Split(authHeader, " ")
 			if len(parts) != 2 || parts[0] != "Bearer" {
-				log.Warn("invalid authorization header format")
-				http.Error(w, "invalid authorization header format", http.StatusUnauthorized)
+				log.Warn("authentication failed",
+					zap.String("auth_failure_reason", string(AuthFailureInvalidScheme)),
+					zap.String("remote_addr", r.RemoteAddr),
+					zap.String("method", r.Method),
+					zap.String("path", r.URL.Path),
+				)
+				http.Error(w, "invalid token", http.StatusUnauthorized)
 				return
 			}
 
@@ -41,12 +51,23 @@ func JWTAuthMiddleware(resolver *KeyResolver) func(http.Handler) http.Handler {
 			// Validate token
 			claims, err := resolver.Resolve(r.Context(), tokenString)
 			if err != nil {
-				// Categorize error for better logging
-				log.Warn("token validation failed",
-					zap.Error(err),
+				// Extract categorized auth error
+				authErr, ok := IsAuthError(err)
+				var failureReason string
+				if ok {
+					failureReason = string(authErr.Reason)
+				} else {
+					failureReason = string(AuthFailureUnknown)
+				}
+
+				// Log with detailed context (token masked for security)
+				log.Warn("authentication failed",
+					zap.String("auth_failure_reason", failureReason),
+					zap.String("token_prefix", maskToken(tokenString)),
 					zap.String("remote_addr", r.RemoteAddr),
 					zap.String("method", r.Method),
 					zap.String("path", r.URL.Path),
+					zap.Error(err),
 				)
 				http.Error(w, "invalid token", http.StatusUnauthorized)
 				return

@@ -45,22 +45,22 @@ func (v *HS256Validator) Validate(tokenString string, kid string) (*CustomClaims
 
 	if err != nil {
 		if errors.Is(err, jwt.ErrTokenExpired) {
-			return nil, fmt.Errorf("token expired: %w", err)
+			return nil, NewAuthError(AuthFailureTokenExpired, "token expired", err)
 		}
 		if errors.Is(err, jwt.ErrTokenSignatureInvalid) {
-			return nil, fmt.Errorf("invalid signature: %w", err)
+			return nil, NewAuthError(AuthFailureInvalidSignature, "invalid signature", err)
 		}
-		return nil, fmt.Errorf("failed to parse token: %w", err)
+		return nil, NewAuthError(AuthFailureUnknown, "failed to parse token", err)
 	}
 
 	claims, ok := token.Claims.(*CustomClaims)
 	if !ok || !token.Valid {
-		return nil, fmt.Errorf("invalid token: valid=%v", token.Valid)
+		return nil, NewAuthError(AuthFailureUnknown, fmt.Sprintf("invalid token: valid=%v", token.Valid), nil)
 	}
 
 	// Validate custom claims
 	if err := claims.Validate(); err != nil {
-		return nil, fmt.Errorf("invalid claims: %w", err)
+		return nil, NewAuthError(AuthFailureUnknown, "invalid claims", err)
 	}
 
 	return claims, nil
@@ -85,7 +85,7 @@ func (v *RS256Validator) Validate(tokenString string, kid string) (*CustomClaims
 	// Get public key from key store
 	publicKey, ok := v.keyStore.GetRS256Key(v.issuer, kid)
 	if !ok {
-		return nil, fmt.Errorf("key not found for issuer %s and kid %s", v.issuer, kid)
+		return nil, NewAuthError(AuthFailureUnknown, fmt.Sprintf("key not found for issuer %s and kid %s", v.issuer, kid), nil)
 	}
 
 	// Parse token
@@ -99,22 +99,22 @@ func (v *RS256Validator) Validate(tokenString string, kid string) (*CustomClaims
 
 	if err != nil {
 		if errors.Is(err, jwt.ErrTokenExpired) {
-			return nil, fmt.Errorf("token expired: %w", err)
+			return nil, NewAuthError(AuthFailureTokenExpired, "token expired", err)
 		}
 		if errors.Is(err, jwt.ErrTokenSignatureInvalid) {
-			return nil, fmt.Errorf("invalid signature: %w", err)
+			return nil, NewAuthError(AuthFailureInvalidSignature, "invalid signature", err)
 		}
-		return nil, fmt.Errorf("failed to parse token: %w", err)
+		return nil, NewAuthError(AuthFailureUnknown, "failed to parse token", err)
 	}
 
 	claims, ok := token.Claims.(*CustomClaims)
 	if !ok || !token.Valid {
-		return nil, fmt.Errorf("invalid token: valid=%v", token.Valid)
+		return nil, NewAuthError(AuthFailureUnknown, fmt.Sprintf("invalid token: valid=%v", token.Valid), nil)
 	}
 
 	// Validate custom claims
 	if err := claims.Validate(); err != nil {
-		return nil, fmt.Errorf("invalid claims: %w", err)
+		return nil, NewAuthError(AuthFailureUnknown, "invalid claims", err)
 	}
 
 	return claims, nil

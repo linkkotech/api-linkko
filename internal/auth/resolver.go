@@ -45,7 +45,7 @@ func (kr *KeyResolver) Resolve(ctx context.Context, tokenString string) (*Custom
 	// Extract issuer and kid from JWT header without validating signature
 	issuer, kid, originalKid, err := kr.extractHeaderInfo(tokenString)
 	if err != nil {
-		return nil, fmt.Errorf("failed to extract header info: %w", err)
+		return nil, NewAuthError(AuthFailureUnknown, "failed to extract header info", err)
 	}
 
 	// Log kid selection for debugging
@@ -64,29 +64,33 @@ func (kr *KeyResolver) Resolve(ctx context.Context, tokenString string) (*Custom
 
 	// Check if issuer is allowed
 	if !kr.allowedIssuers[issuer] {
-		return nil, fmt.Errorf("issuer not allowed: %s", issuer)
+		return nil, NewAuthError(AuthFailureInvalidIssuer, fmt.Sprintf("issuer not allowed: %s", issuer), nil)
 	}
 
 	// Get validator for issuer
 	validator, ok := kr.validators[issuer]
 	if !ok {
-		return nil, fmt.Errorf("no validator found for issuer: %s", issuer)
+		return nil, NewAuthError(AuthFailureInvalidIssuer, fmt.Sprintf("no validator found for issuer: %s", issuer), nil)
 	}
 
-	// Validate token
+	// Validate token (validator returns categorized errors)
 	claims, err := validator.Validate(tokenString, kid)
 	if err != nil {
-		return nil, fmt.Errorf("token validation failed: %w", err)
+		// Preserve AuthError if already categorized, otherwise wrap as unknown
+		if _, ok := IsAuthError(err); ok {
+			return nil, err
+		}
+		return nil, NewAuthError(AuthFailureUnknown, "token validation failed", err)
 	}
 
 	// Verify issuer claim
 	if claims.Issuer != issuer {
-		return nil, fmt.Errorf("issuer mismatch: expected %s, got %s", issuer, claims.Issuer)
+		return nil, NewAuthError(AuthFailureInvalidIssuer, fmt.Sprintf("issuer mismatch: expected %s, got %s", issuer, claims.Issuer), nil)
 	}
 
 	// Verify audience
 	if !kr.validAudience(claims.Audience) {
-		return nil, fmt.Errorf("invalid audience: %v", claims.Audience)
+		return nil, NewAuthError(AuthFailureInvalidAudience, fmt.Sprintf("invalid audience: %v", claims.Audience), nil)
 	}
 
 	return claims, nil
