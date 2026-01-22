@@ -163,16 +163,20 @@ func runServe(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("failed to load MCP public key: %w", err)
 	}
 
-	// Create validators
-	hs256Validator := auth.NewHS256Validator(keyStore, "linkko-crm-web")
-	rs256Validator := auth.NewRS256Validator(keyStore, "linkko-mcp-server")
+	// Create validators with clock skew
+	clockSkew := time.Duration(cfg.JWTClockSkewSeconds) * time.Second
+	hs256Validator := auth.NewHS256Validator(keyStore, "linkko-crm-web", clockSkew)
+	rs256Validator := auth.NewRS256Validator(keyStore, "linkko-mcp-server", clockSkew)
 
 	// Create resolver
 	allowedIssuers := cfg.GetAllowedIssuers()
 	resolver := auth.NewKeyResolver(allowedIssuers, []string{cfg.JWTAudience})
 	resolver.RegisterValidator("linkko-crm-web", hs256Validator)
 	resolver.RegisterValidator("linkko-mcp-server", rs256Validator)
-	log.Info(ctx, "JWT authentication initialized", zap.Strings("allowed_issuers", allowedIssuers))
+	log.Info(ctx, "JWT authentication initialized",
+		zap.Strings("allowed_issuers", allowedIssuers),
+		zap.Int("clock_skew_seconds", cfg.JWTClockSkewSeconds),
+	)
 
 	// Initialize repositories
 	idempotencyRepo := repo.NewIdempotencyRepo(pool)

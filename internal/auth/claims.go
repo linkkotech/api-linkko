@@ -21,3 +21,12 @@ func (c *CustomClaims) Validate() error {
 	}
 	return nil
 }
+
+// AuthContext represents authentication context injected into request context
+type AuthContext struct {
+	WorkspaceID string
+	ActorID     string
+	ActorType   string // "user", "service", etc.
+	AuthMethod  string // "jwt", "api_key", etc.
+	Issuer      string
+}

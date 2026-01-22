@@ -16,10 +16,11 @@ type Config struct {
 	RedisURL string `env:"REDIS_URL,required"`
 
 	// JWT Configuration
-	JWTSecretCRMV1    string `env:"JWT_SECRET_CRM_V1,required"`
-	JWTPublicKeyMCPV1 string `env:"JWT_PUBLIC_KEY_MCP_V1,required"`
-	JWTAllowedIssuers string `env:"JWT_ALLOWED_ISSUERS,required"`
-	JWTAudience       string `env:"JWT_AUDIENCE,required"`
+	JWTSecretCRMV1     string `env:"JWT_SECRET_CRM_V1,required"`
+	JWTPublicKeyMCPV1  string `env:"JWT_PUBLIC_KEY_MCP_V1,required"`
+	JWTAllowedIssuers  string `env:"JWT_ALLOWED_ISSUERS,required"`
+	JWTAudience        string `env:"JWT_AUDIENCE,required"`
+	JWTClockSkewSeconds int    `env:"JWT_CLOCK_SKEW_SECONDS" envDefault:"60"`
 
 	// OpenTelemetry
 	OTELEnabled          bool    `env:"OTEL_ENABLED" envDefault:"true"`
@@ -81,6 +82,10 @@ func (c *Config) Validate() error {
 
 	if c.OTELSamplingRatio < 0 || c.OTELSamplingRatio > 1 {
 		return fmt.Errorf("OTEL_SAMPLING_RATIO must be between 0 and 1")
+	}
+
+	if c.JWTClockSkewSeconds < 0 {
+		return fmt.Errorf("JWT_CLOCK_SKEW_SECONDS must be non-negative")
 	}
 
 	if c.RateLimitPerWorkspacePerMin <= 0 {

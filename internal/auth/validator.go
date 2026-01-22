@@ -3,6 +3,7 @@ package auth
 import (
 	"errors"
 	"fmt"
+	"time"
 
 	"github.com/golang-jwt/jwt/v5"
 )
@@ -14,15 +15,17 @@ type TokenValidator interface {
 
 // HS256Validator validates HS256 JWT tokens
 type HS256Validator struct {
-	keyStore *KeyStore
-	issuer   string
+	keyStore  *KeyStore
+	issuer    string
+	clockSkew time.Duration
 }
 
 // NewHS256Validator creates a new HS256 validator
-func NewHS256Validator(keyStore *KeyStore, issuer string) *HS256Validator {
+func NewHS256Validator(keyStore *KeyStore, issuer string, clockSkew time.Duration) *HS256Validator {
 	return &HS256Validator{
-		keyStore: keyStore,
-		issuer:   issuer,
+		keyStore:  keyStore,
+		issuer:    issuer,
+		clockSkew: clockSkew,
 	}
 }
 
@@ -34,14 +37,14 @@ func (v *HS256Validator) Validate(tokenString string, kid string) (*CustomClaims
 		return nil, fmt.Errorf("key not found for issuer %s and kid %s", v.issuer, kid)
 	}
 
-	// Parse token
+	// Parse token with clock skew
 	token, err := jwt.ParseWithClaims(tokenString, &CustomClaims{}, func(token *jwt.Token) (interface{}, error) {
 		// Verify signing method
 		if _, ok := token.Method.(*jwt.SigningMethodHMAC); !ok {
 			return nil, fmt.Errorf("unexpected signing method: %v", token.Header["alg"])
 		}
 		return secret, nil
-	})
+	}, jwt.WithLeeway(v.clockSkew))
 
 	if err != nil {
 		if errors.Is(err, jwt.ErrTokenExpired) {
@@ -68,15 +71,17 @@ func (v *HS256Validator) Validate(tokenString string, kid string) (*CustomClaims
 
 // RS256Validator validates RS256 JWT tokens
 type RS256Validator struct {
-	keyStore *KeyStore
-	issuer   string
+	keyStore  *KeyStore
+	issuer    string
+	clockSkew time.Duration
 }
 
 // NewRS256Validator creates a new RS256 validator
-func NewRS256Validator(keyStore *KeyStore, issuer string) *RS256Validator {
+func NewRS256Validator(keyStore *KeyStore, issuer string, clockSkew time.Duration) *RS256Validator {
 	return &RS256Validator{
-		keyStore: keyStore,
-		issuer:   issuer,
+		keyStore:  keyStore,
+		issuer:    issuer,
+		clockSkew: clockSkew,
 	}
 }
 
@@ -88,14 +93,14 @@ func (v *RS256Validator) Validate(tokenString string, kid string) (*CustomClaims
 		return nil, NewAuthError(AuthFailureUnknown, fmt.Sprintf("key not found for issuer %s and kid %s", v.issuer, kid), nil)
 	}
 
-	// Parse token
+	// Parse token with clock skew
 	token, err := jwt.ParseWithClaims(tokenString, &CustomClaims{}, func(token *jwt.Token) (interface{}, error) {
 		// Verify signing method
 		if _, ok := token.Method.(*jwt.SigningMethodRSA); !ok {
 			return nil, fmt.Errorf("unexpected signing method: %v", token.Header["alg"])
 		}
 		return publicKey, nil
-	})
+	}, jwt.WithLeeway(v.clockSkew))
 
 	if err != nil {
 		if errors.Is(err, jwt.ErrTokenExpired) {

@@ -12,7 +12,10 @@ import (
 
 type contextKey string
 
-const claimsContextKey contextKey = "claims"
+const (
+	claimsContextKey     contextKey = "claims"
+	authContextKey       contextKey = "auth_context"
+)
 
 // JWTAuthMiddleware validates JWT tokens and injects claims into context
 func JWTAuthMiddleware(resolver *KeyResolver) func(http.Handler) http.Handler {
@@ -73,13 +76,25 @@ func JWTAuthMiddleware(resolver *KeyResolver) func(http.Handler) http.Handler {
 				return
 			}
 
-			// Add claims to context
+			// Create auth context with metadata
+			authCtx := &AuthContext{
+				WorkspaceID: claims.WorkspaceID,
+				ActorID:     claims.ActorID,
+				ActorType:   "user",  // Default actor type
+				AuthMethod:  "jwt",   // Authentication method
+				Issuer:      claims.Issuer,
+			}
+
+			// Add claims and auth context to request context
 			ctx := context.WithValue(r.Context(), claimsContextKey, claims)
+			ctx = context.WithValue(ctx, authContextKey, authCtx)
 
 			// Log successful authentication
 			log.Info("authenticated request",
 				zap.String("workspace_id", claims.WorkspaceID),
 				zap.String("actor_id", claims.ActorID),
+				zap.String("actor_type", authCtx.ActorType),
+				zap.String("auth_method", authCtx.AuthMethod),
 				zap.String("issuer", claims.Issuer),
 			)
 
@@ -92,4 +107,10 @@ func JWTAuthMiddleware(resolver *KeyResolver) func(http.Handler) http.Handler {
 func GetClaims(ctx context.Context) (*CustomClaims, bool) {
 	claims, ok := ctx.Value(claimsContextKey).(*CustomClaims)
 	return claims, ok
+}
+
+// GetAuthContext retrieves auth context from context
+func GetAuthContext(ctx context.Context) (*AuthContext, bool) {
+	authCtx, ok := ctx.Value(authContextKey).(*AuthContext)
+	return authCtx, ok
 }
