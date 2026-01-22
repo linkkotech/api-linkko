@@ -7,6 +7,7 @@ import (
 
 	"linkko-api/internal/auth"
 	"linkko-api/internal/domain"
+	"linkko-api/internal/http/httperr"
 	"linkko-api/internal/observability/logger"
 	"linkko-api/internal/service"
 
@@ -29,19 +30,19 @@ func (h *TaskHandler) ListTasks(w http.ResponseWriter, r *http.Request) {
 
 	workspaceID := chi.URLParam(r, "workspaceId")
 	if workspaceID == "" {
-		writeError(w, ctx, log, http.StatusBadRequest, "INVALID_WORKSPACE_ID", "workspaceId is required")
+		httperr.BadRequest400(w, ctx, httperr.ErrCodeInvalidParameter, "workspaceId is required")
 		return
 	}
 
 	claims, ok := auth.GetClaims(ctx)
 	if !ok {
-		writeError(w, ctx, log, http.StatusUnauthorized, "UNAUTHORIZED", "authentication claims not found")
+		httperr.Unauthorized401(w, ctx, httperr.ErrCodeInvalidToken, "authentication claims not found")
 		return
 	}
 
 	actorID := claims.ActorID
 	if actorID == "" {
-		writeError(w, ctx, log, http.StatusUnauthorized, "UNAUTHORIZED", "actorID not found in claims")
+		httperr.Unauthorized401(w, ctx, httperr.ErrCodeInvalidToken, "actorID not found in claims")
 		return
 	}
 
@@ -56,7 +57,7 @@ func (h *TaskHandler) ListTasks(w http.ResponseWriter, r *http.Request) {
 	if limitStr := r.URL.Query().Get("limit"); limitStr != "" {
 		limit, err := strconv.Atoi(limitStr)
 		if err != nil || limit < 1 || limit > 100 {
-			writeError(w, ctx, log, http.StatusBadRequest, "INVALID_LIMIT", "limit must be between 1 and 100")
+			httperr.BadRequest400(w, ctx, httperr.ErrCodeInvalidParameter, "limit must be between 1 and 100")
 			return
 		}
 		params.Limit = limit
@@ -66,7 +67,7 @@ func (h *TaskHandler) ListTasks(w http.ResponseWriter, r *http.Request) {
 	if statusStr := r.URL.Query().Get("status"); statusStr != "" {
 		status := domain.TaskStatus(statusStr)
 		if !status.IsValid() {
-			writeError(w, ctx, log, http.StatusBadRequest, "INVALID_STATUS", "status must be one of: TODO, IN_PROGRESS, DONE, CANCELLED")
+			httperr.BadRequest400(w, ctx, httperr.ErrCodeInvalidParameter, "status must be one of: TODO, IN_PROGRESS, DONE, CANCELLED")
 			return
 		}
 		params.Status = &status
@@ -75,7 +76,7 @@ func (h *TaskHandler) ListTasks(w http.ResponseWriter, r *http.Request) {
 	if priorityStr := r.URL.Query().Get("priority"); priorityStr != "" {
 		priority := domain.Priority(priorityStr)
 		if !priority.IsValid() {
-			writeError(w, ctx, log, http.StatusBadRequest, "INVALID_PRIORITY", "priority must be one of: LOW, MEDIUM, HIGH, URGENT")
+			httperr.BadRequest400(w, ctx, httperr.ErrCodeInvalidParameter, "priority must be one of: LOW, MEDIUM, HIGH, URGENT")
 			return
 		}
 		params.Priority = &priority
@@ -84,7 +85,7 @@ func (h *TaskHandler) ListTasks(w http.ResponseWriter, r *http.Request) {
 	if typeStr := r.URL.Query().Get("type"); typeStr != "" {
 		taskType := domain.TaskType(typeStr)
 		if !taskType.IsValid() {
-			writeError(w, ctx, log, http.StatusBadRequest, "INVALID_TYPE", "type must be one of: task, bug, feature, improvement, research")
+			httperr.BadRequest400(w, ctx, httperr.ErrCodeInvalidParameter, "type must be one of: task, bug, feature, improvement, research")
 			return
 		}
 		params.Type = &taskType
@@ -129,19 +130,19 @@ func (h *TaskHandler) GetTask(w http.ResponseWriter, r *http.Request) {
 	workspaceID := chi.URLParam(r, "workspaceId")
 	taskID := chi.URLParam(r, "taskId")
 	if workspaceID == "" || taskID == "" {
-		writeError(w, ctx, log, http.StatusBadRequest, "INVALID_ID", "workspaceId and taskId are required")
+		httperr.BadRequest400(w, ctx, httperr.ErrCodeInvalidParameter, "workspaceId and taskId are required")
 		return
 	}
 
 	claims, ok := auth.GetClaims(ctx)
 	if !ok {
-		writeError(w, ctx, log, http.StatusUnauthorized, "UNAUTHORIZED", "authentication claims not found")
+		httperr.Unauthorized401(w, ctx, httperr.ErrCodeInvalidToken, "authentication claims not found")
 		return
 	}
 
 	actorID := claims.ActorID
 	if actorID == "" {
-		writeError(w, ctx, log, http.StatusUnauthorized, "UNAUTHORIZED", "actorID not found in claims")
+		httperr.Unauthorized401(w, ctx, httperr.ErrCodeInvalidToken, "actorID not found in claims")
 		return
 	}
 
@@ -167,25 +168,25 @@ func (h *TaskHandler) CreateTask(w http.ResponseWriter, r *http.Request) {
 
 	workspaceID := chi.URLParam(r, "workspaceId")
 	if workspaceID == "" {
-		writeError(w, ctx, log, http.StatusBadRequest, "INVALID_WORKSPACE_ID", "workspaceId is required")
+		httperr.BadRequest400(w, ctx, httperr.ErrCodeInvalidParameter, "workspaceId is required")
 		return
 	}
 
 	claims, ok := auth.GetClaims(ctx)
 	if !ok {
-		writeError(w, ctx, log, http.StatusUnauthorized, "UNAUTHORIZED", "authentication claims not found")
+		httperr.Unauthorized401(w, ctx, httperr.ErrCodeInvalidToken, "authentication claims not found")
 		return
 	}
 
 	actorID := claims.ActorID
 	if actorID == "" {
-		writeError(w, ctx, log, http.StatusUnauthorized, "UNAUTHORIZED", "actorID not found in claims")
+		httperr.Unauthorized401(w, ctx, httperr.ErrCodeInvalidToken, "actorID not found in claims")
 		return
 	}
 
 	var req domain.CreateTaskRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		writeError(w, ctx, log, http.StatusBadRequest, "INVALID_REQUEST", "invalid JSON body")
+		httperr.BadRequest400(w, ctx, httperr.ErrCodeInvalidParameter, "invalid JSON body")
 		return
 	}
 
@@ -212,25 +213,25 @@ func (h *TaskHandler) UpdateTask(w http.ResponseWriter, r *http.Request) {
 	workspaceID := chi.URLParam(r, "workspaceId")
 	taskID := chi.URLParam(r, "taskId")
 	if workspaceID == "" || taskID == "" {
-		writeError(w, ctx, log, http.StatusBadRequest, "INVALID_ID", "workspaceId and taskId are required")
+		httperr.BadRequest400(w, ctx, httperr.ErrCodeInvalidParameter, "workspaceId and taskId are required")
 		return
 	}
 
 	claims, ok := auth.GetClaims(ctx)
 	if !ok {
-		writeError(w, ctx, log, http.StatusUnauthorized, "UNAUTHORIZED", "authentication claims not found")
+		httperr.Unauthorized401(w, ctx, httperr.ErrCodeInvalidToken, "authentication claims not found")
 		return
 	}
 
 	actorID := claims.ActorID
 	if actorID == "" {
-		writeError(w, ctx, log, http.StatusUnauthorized, "UNAUTHORIZED", "actorID not found in claims")
+		httperr.Unauthorized401(w, ctx, httperr.ErrCodeInvalidToken, "actorID not found in claims")
 		return
 	}
 
 	var req domain.UpdateTaskRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		writeError(w, ctx, log, http.StatusBadRequest, "INVALID_REQUEST", "invalid JSON body")
+		httperr.BadRequest400(w, ctx, httperr.ErrCodeInvalidParameter, "invalid JSON body")
 		return
 	}
 
@@ -257,19 +258,19 @@ func (h *TaskHandler) DeleteTask(w http.ResponseWriter, r *http.Request) {
 	workspaceID := chi.URLParam(r, "workspaceId")
 	taskID := chi.URLParam(r, "taskId")
 	if workspaceID == "" || taskID == "" {
-		writeError(w, ctx, log, http.StatusBadRequest, "INVALID_ID", "workspaceId and taskId are required")
+		httperr.BadRequest400(w, ctx, httperr.ErrCodeInvalidParameter, "workspaceId and taskId are required")
 		return
 	}
 
 	claims, ok := auth.GetClaims(ctx)
 	if !ok {
-		writeError(w, ctx, log, http.StatusUnauthorized, "UNAUTHORIZED", "authentication claims not found")
+		httperr.Unauthorized401(w, ctx, httperr.ErrCodeInvalidToken, "authentication claims not found")
 		return
 	}
 
 	actorID := claims.ActorID
 	if actorID == "" {
-		writeError(w, ctx, log, http.StatusUnauthorized, "UNAUTHORIZED", "actorID not found in claims")
+		httperr.Unauthorized401(w, ctx, httperr.ErrCodeInvalidToken, "actorID not found in claims")
 		return
 	}
 
@@ -297,31 +298,31 @@ func (h *TaskHandler) MoveTask(w http.ResponseWriter, r *http.Request) {
 	workspaceID := chi.URLParam(r, "workspaceId")
 	taskID := chi.URLParam(r, "taskId")
 	if workspaceID == "" || taskID == "" {
-		writeError(w, ctx, log, http.StatusBadRequest, "INVALID_ID", "workspaceId and taskId are required")
+		httperr.BadRequest400(w, ctx, httperr.ErrCodeInvalidParameter, "workspaceId and taskId are required")
 		return
 	}
 
 	claims, ok := auth.GetClaims(ctx)
 	if !ok {
-		writeError(w, ctx, log, http.StatusUnauthorized, "UNAUTHORIZED", "authentication claims not found")
+		httperr.Unauthorized401(w, ctx, httperr.ErrCodeInvalidToken, "authentication claims not found")
 		return
 	}
 
 	actorID := claims.ActorID
 	if actorID == "" {
-		writeError(w, ctx, log, http.StatusUnauthorized, "UNAUTHORIZED", "actorID not found in claims")
+		httperr.Unauthorized401(w, ctx, httperr.ErrCodeInvalidToken, "actorID not found in claims")
 		return
 	}
 
 	var req domain.MoveTaskRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		writeError(w, ctx, log, http.StatusBadRequest, "INVALID_REQUEST", "invalid JSON body")
+		httperr.BadRequest400(w, ctx, httperr.ErrCodeInvalidParameter, "invalid JSON body")
 		return
 	}
 
 	// Validar status destino
 	if !req.ToStatus.IsValid() {
-		writeError(w, ctx, log, http.StatusBadRequest, "INVALID_STATUS", "toStatus must be one of: TODO, IN_PROGRESS, DONE, CANCELLED")
+		httperr.BadRequest400(w, ctx, httperr.ErrCodeInvalidParameter, "toStatus must be one of: TODO, IN_PROGRESS, DONE, CANCELLED")
 		return
 	}
 

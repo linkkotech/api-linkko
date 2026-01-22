@@ -9,6 +9,7 @@ import (
 
 	"linkko-api/internal/auth"
 	"linkko-api/internal/domain"
+	"linkko-api/internal/http/httperr"
 	"linkko-api/internal/observability/logger"
 	"linkko-api/internal/service"
 
@@ -31,19 +32,19 @@ func (h *CompanyHandler) ListCompanies(w http.ResponseWriter, r *http.Request) {
 
 	workspaceID := chi.URLParam(r, "workspaceId")
 	if workspaceID == "" {
-		writeError(w, ctx, log, http.StatusBadRequest, "INVALID_WORKSPACE_ID", "workspaceId is required")
+		httperr.BadRequest400(w, ctx, httperr.ErrCodeInvalidParameter, "workspaceId is required")
 		return
 	}
 
 	claims, ok := auth.GetClaims(ctx)
 	if !ok {
-		writeError(w, ctx, log, http.StatusUnauthorized, "UNAUTHORIZED", "authentication claims not found")
+		httperr.Unauthorized401(w, ctx, httperr.ErrCodeInvalidToken, "authentication claims not found")
 		return
 	}
 
 	actorID := claims.ActorID
 	if actorID == "" {
-		writeError(w, ctx, log, http.StatusUnauthorized, "UNAUTHORIZED", "actorID not found in claims")
+		httperr.Unauthorized401(w, ctx, httperr.ErrCodeInvalidToken, "actorID not found in claims")
 		return
 	}
 
@@ -57,7 +58,7 @@ func (h *CompanyHandler) ListCompanies(w http.ResponseWriter, r *http.Request) {
 	if limitStr := r.URL.Query().Get("limit"); limitStr != "" {
 		limit, err := strconv.Atoi(limitStr)
 		if err != nil || limit < 1 || limit > 100 {
-			writeError(w, ctx, log, http.StatusBadRequest, "INVALID_LIMIT", "limit must be between 1 and 100")
+			httperr.BadRequest400(w, ctx, httperr.ErrCodeInvalidParameter, "limit must be between 1 and 100")
 			return
 		}
 		params.Limit = limit
@@ -75,7 +76,7 @@ func (h *CompanyHandler) ListCompanies(w http.ResponseWriter, r *http.Request) {
 	if lifecycleStr := r.URL.Query().Get("lifecycleStage"); lifecycleStr != "" {
 		lifecycleStage := domain.CompanyLifecycleStage(lifecycleStr)
 		if !lifecycleStage.IsValid() {
-			writeError(w, ctx, log, http.StatusBadRequest, "INVALID_LIFECYCLE_STAGE", "invalid lifecycleStage value")
+			httperr.BadRequest400(w, ctx, httperr.ErrCodeInvalidParameter, "invalid lifecycleStage value")
 			return
 		}
 		params.LifecycleStage = &lifecycleStage
@@ -84,7 +85,7 @@ func (h *CompanyHandler) ListCompanies(w http.ResponseWriter, r *http.Request) {
 	if sizeStr := r.URL.Query().Get("companySize"); sizeStr != "" {
 		companySize := domain.CompanySize(sizeStr)
 		if !companySize.IsValid() {
-			writeError(w, ctx, log, http.StatusBadRequest, "INVALID_COMPANY_SIZE", "invalid companySize value")
+			httperr.BadRequest400(w, ctx, httperr.ErrCodeInvalidParameter, "invalid companySize value")
 			return
 		}
 		params.Size = &companySize
@@ -131,13 +132,13 @@ func (h *CompanyHandler) GetCompany(w http.ResponseWriter, r *http.Request) {
 	workspaceID := chi.URLParam(r, "workspaceId")
 	companyID := chi.URLParam(r, "companyId")
 	if workspaceID == "" || companyID == "" {
-		writeError(w, ctx, log, http.StatusBadRequest, "INVALID_ID", "workspaceId and companyId are required")
+		httperr.BadRequest400(w, ctx, httperr.ErrCodeInvalidParameter, "workspaceId and companyId are required")
 		return
 	}
 
 	claims, ok := auth.GetClaims(ctx)
 	if !ok {
-		writeError(w, ctx, log, http.StatusUnauthorized, "UNAUTHORIZED", "authentication claims not found")
+		httperr.Unauthorized401(w, ctx, httperr.ErrCodeInvalidToken, "authentication claims not found")
 		return
 	}
 
@@ -169,26 +170,26 @@ func (h *CompanyHandler) CreateCompany(w http.ResponseWriter, r *http.Request) {
 
 	workspaceID := chi.URLParam(r, "workspaceId")
 	if workspaceID == "" {
-		writeError(w, ctx, log, http.StatusBadRequest, "INVALID_WORKSPACE_ID", "workspaceId is required")
+		httperr.BadRequest400(w, ctx, httperr.ErrCodeInvalidParameter, "workspaceId is required")
 		return
 	}
 
 	claims, ok := auth.GetClaims(ctx)
 	if !ok {
-		writeError(w, ctx, log, http.StatusUnauthorized, "UNAUTHORIZED", "authentication claims not found")
+		httperr.Unauthorized401(w, ctx, httperr.ErrCodeInvalidToken, "authentication claims not found")
 		return
 	}
 
 	actorID := claims.ActorID
 	if actorID == "" {
-		writeError(w, ctx, log, http.StatusUnauthorized, "UNAUTHORIZED", "actorID not found in claims")
+		httperr.Unauthorized401(w, ctx, httperr.ErrCodeInvalidToken, "actorID not found in claims")
 		return
 	}
 
 	var req domain.CreateCompanyRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		log.Error(ctx, "failed to decode request body", zap.Error(err))
-		writeError(w, ctx, log, http.StatusBadRequest, "INVALID_REQUEST_BODY", "request body must be valid JSON")
+		httperr.BadRequest400(w, ctx, httperr.ErrCodeInvalidParameter, "request body must be valid JSON")
 		return
 	}
 
@@ -219,26 +220,26 @@ func (h *CompanyHandler) UpdateCompany(w http.ResponseWriter, r *http.Request) {
 	workspaceID := chi.URLParam(r, "workspaceId")
 	companyID := chi.URLParam(r, "companyId")
 	if workspaceID == "" || companyID == "" {
-		writeError(w, ctx, log, http.StatusBadRequest, "INVALID_ID", "workspaceId and companyId are required")
+		httperr.BadRequest400(w, ctx, httperr.ErrCodeInvalidParameter, "workspaceId and companyId are required")
 		return
 	}
 
 	claims, ok := auth.GetClaims(ctx)
 	if !ok {
-		writeError(w, ctx, log, http.StatusUnauthorized, "UNAUTHORIZED", "authentication claims not found")
+		httperr.Unauthorized401(w, ctx, httperr.ErrCodeInvalidToken, "authentication claims not found")
 		return
 	}
 
 	actorID := claims.ActorID
 	if actorID == "" {
-		writeError(w, ctx, log, http.StatusUnauthorized, "UNAUTHORIZED", "actorID not found in claims")
+		httperr.Unauthorized401(w, ctx, httperr.ErrCodeInvalidToken, "actorID not found in claims")
 		return
 	}
 
 	var req domain.UpdateCompanyRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		log.Error(ctx, "failed to decode request body", zap.Error(err))
-		writeError(w, ctx, log, http.StatusBadRequest, "INVALID_REQUEST_BODY", "request body must be valid JSON")
+		httperr.BadRequest400(w, ctx, httperr.ErrCodeInvalidParameter, "request body must be valid JSON")
 		return
 	}
 
@@ -269,19 +270,19 @@ func (h *CompanyHandler) DeleteCompany(w http.ResponseWriter, r *http.Request) {
 	workspaceID := chi.URLParam(r, "workspaceId")
 	companyID := chi.URLParam(r, "companyId")
 	if workspaceID == "" || companyID == "" {
-		writeError(w, ctx, log, http.StatusBadRequest, "INVALID_ID", "workspaceId and companyId are required")
+		httperr.BadRequest400(w, ctx, httperr.ErrCodeInvalidParameter, "workspaceId and companyId are required")
 		return
 	}
 
 	claims, ok := auth.GetClaims(ctx)
 	if !ok {
-		writeError(w, ctx, log, http.StatusUnauthorized, "UNAUTHORIZED", "authentication claims not found")
+		httperr.Unauthorized401(w, ctx, httperr.ErrCodeInvalidToken, "authentication claims not found")
 		return
 	}
 
 	actorID := claims.ActorID
 	if actorID == "" {
-		writeError(w, ctx, log, http.StatusUnauthorized, "UNAUTHORIZED", "actorID not found in claims")
+		httperr.Unauthorized401(w, ctx, httperr.ErrCodeInvalidToken, "actorID not found in claims")
 		return
 	}
 
@@ -308,15 +309,15 @@ func (h *CompanyHandler) DeleteCompany(w http.ResponseWriter, r *http.Request) {
 func handleCompanyServiceError(w http.ResponseWriter, ctx context.Context, log *logger.Logger, err error) {
 	switch {
 	case errors.Is(err, service.ErrMemberNotFound):
-		writeError(w, ctx, log, http.StatusForbidden, "FORBIDDEN", "insufficient permissions for this workspace")
+		httperr.Forbidden403(w, ctx, httperr.ErrCodeForbidden, "insufficient permissions for this workspace")
 	case errors.Is(err, service.ErrUnauthorized):
-		writeError(w, ctx, log, http.StatusForbidden, "FORBIDDEN", "insufficient permissions for this action")
+		httperr.Forbidden403(w, ctx, httperr.ErrCodeForbidden, "insufficient permissions for this action")
 	case errors.Is(err, service.ErrCompanyNotFound):
-		writeError(w, ctx, log, http.StatusNotFound, "NOT_FOUND", "company not found")
+		httperr.WriteError(w, ctx, http.StatusNotFound, "NOT_FOUND", "company not found")
 	case errors.Is(err, service.ErrCompanyDomainConflict):
-		writeError(w, ctx, log, http.StatusConflict, "CONFLICT", "company with this domain already exists")
+		httperr.WriteError(w, ctx, http.StatusConflict, "CONFLICT", "company with this domain already exists")
 	default:
 		log.Error(ctx, "unexpected service error", zap.Error(err))
-		writeError(w, ctx, log, http.StatusInternalServerError, "INTERNAL_ERROR", "an unexpected error occurred")
+		httperr.InternalError500(w, ctx, "an unexpected error occurred")
 	}
 }
