@@ -78,6 +78,12 @@ func (h *ContactHandler) ListContacts(w http.ResponseWriter, r *http.Request) {
 	// Service now fetches role from database internally
 	response, err := h.service.ListContacts(ctx, workspaceID, actorID, params)
 	if err != nil {
+		log.Error(ctx, "failed to list contacts",
+			zap.Error(err),
+			zap.String("workspaceId", workspaceID),
+			zap.String("actorId", actorID),
+			zap.String("error_details", err.Error()),
+		)
 		handleServiceError(w, ctx, log, err)
 		return
 	}
@@ -115,6 +121,13 @@ func (h *ContactHandler) GetContact(w http.ResponseWriter, r *http.Request) {
 	// Service now fetches role from database internally
 	contact, err := h.service.GetContact(ctx, workspaceID, contactID, actorID)
 	if err != nil {
+		log.Error(ctx, "failed to get contact",
+			zap.Error(err),
+			zap.String("workspaceId", workspaceID),
+			zap.String("contactId", contactID),
+			zap.String("actorId", actorID),
+			zap.String("error_details", err.Error()),
+		)
 		handleServiceError(w, ctx, log, err)
 		return
 	}
@@ -163,6 +176,13 @@ func (h *ContactHandler) CreateContact(w http.ResponseWriter, r *http.Request) {
 	// Service now fetches role from database internally
 	contact, err := h.service.CreateContact(ctx, workspaceID, actorID, &req)
 	if err != nil {
+		log.Error(ctx, "failed to create contact",
+			zap.Error(err),
+			zap.String("workspaceId", workspaceID),
+			zap.String("actorId", actorID),
+			zap.String("email", req.Email),
+			zap.String("error_details", err.Error()),
+		)
 		handleServiceError(w, ctx, log, err)
 		return
 	}
@@ -214,6 +234,13 @@ func (h *ContactHandler) UpdateContact(w http.ResponseWriter, r *http.Request) {
 	// Service now fetches role from database internally
 	contact, err := h.service.UpdateContact(ctx, workspaceID, contactID, actorID, &req)
 	if err != nil {
+		log.Error(ctx, "failed to update contact",
+			zap.Error(err),
+			zap.String("workspaceId", workspaceID),
+			zap.String("contactId", contactID),
+			zap.String("actorId", actorID),
+			zap.String("error_details", err.Error()),
+		)
 		handleServiceError(w, ctx, log, err)
 		return
 	}
@@ -250,6 +277,13 @@ func (h *ContactHandler) DeleteContact(w http.ResponseWriter, r *http.Request) {
 	// Service now fetches role from database internally and validates delete permission
 	err := h.service.DeleteContact(ctx, workspaceID, contactID, actorID)
 	if err != nil {
+		log.Error(ctx, "failed to delete contact",
+			zap.Error(err),
+			zap.String("workspaceId", workspaceID),
+			zap.String("contactId", contactID),
+			zap.String("actorId", actorID),
+			zap.String("error_details", err.Error()),
+		)
 		handleServiceError(w, ctx, log, err)
 		return
 	}
@@ -272,23 +306,43 @@ func writeJSON(w http.ResponseWriter, status int, data interface{}) {
 }
 
 func handleServiceError(w http.ResponseWriter, ctx context.Context, log *logger.Logger, err error) {
+	// Log error details for debugging before handling
+	unwrappedErr := errors.Unwrap(err)
+	errorType := "unknown"
+	if unwrappedErr != nil {
+		errorType = unwrappedErr.Error()
+	}
+	
+	log.Error(ctx, "service error occurred",
+		zap.Error(err),
+		zap.String("error_type", errorType),
+		zap.String("error_details", err.Error()),
+	)
+
 	switch {
 	case errors.Is(err, service.ErrMemberNotFound):
+		log.Warn(ctx, "member not found in workspace", zap.Error(err))
 		httperr.Forbidden403(w, ctx, httperr.ErrCodeForbidden, "insufficient permissions for this workspace")
 	case errors.Is(err, service.ErrUnauthorized):
+		log.Warn(ctx, "unauthorized action", zap.Error(err))
 		httperr.Forbidden403(w, ctx, httperr.ErrCodeForbidden, "insufficient permissions for this action")
 	case errors.Is(err, service.ErrContactNotFound):
+		log.Debug(ctx, "contact not found", zap.Error(err))
 		httperr.WriteError(w, ctx, http.StatusNotFound, "NOT_FOUND", "contact not found")
 	case errors.Is(err, service.ErrEmailConflict):
+		log.Warn(ctx, "email conflict", zap.Error(err))
 		httperr.WriteError(w, ctx, http.StatusConflict, "CONFLICT", "contact with this email already exists")
 	case errors.Is(err, service.ErrConcurrencyConflict):
+		log.Warn(ctx, "concurrency conflict", zap.Error(err))
 		httperr.WriteError(w, ctx, http.StatusConflict, "CONFLICT", "contact was modified by another request")
 	case errors.Is(err, service.ErrInvalidOwner):
+		log.Warn(ctx, "invalid owner", zap.Error(err))
 		httperr.WriteError(w, ctx, http.StatusUnprocessableEntity, "INVALID_OWNER", "owner does not belong to workspace")
 	case errors.Is(err, service.ErrInvalidCompany):
+		log.Warn(ctx, "invalid company", zap.Error(err))
 		httperr.WriteError(w, ctx, http.StatusUnprocessableEntity, "INVALID_COMPANY", "company does not belong to workspace")
 	default:
-		log.Error(ctx, "internal server error", zap.Error(err))
+		log.Error(ctx, "unhandled internal server error", zap.Error(err), zap.String("error_details", err.Error()))
 		httperr.InternalError500(w, ctx, "an internal error occurred")
 	}
 }
