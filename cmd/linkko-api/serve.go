@@ -141,42 +141,82 @@ func runServe(cmd *cobra.Command, args []string) error {
 	log.Info(ctx, "initializing JWT authentication")
 	keyStore := auth.NewKeyStore()
 
-	// Load HS256 key for CRM web (tolerant to both Base64 and plain text)
-	var secretBytes []byte
-	secretBytes, err = base64.StdEncoding.DecodeString(cfg.JWTSecretCRMV1)
+	// Load HS256 key for CRM web (JWT_HS256_SECRET must be Base64-encoded)
+	log.Info(ctx, "Loading JWT_HS256_SECRET for HS256...")
+	secretBytes, err := base64.StdEncoding.DecodeString(cfg.JWTHS256Secret)
 	if err != nil {
-		// Fallback: treat as plain text secret (not Base64)
-		log.Info(ctx, "JWT_SECRET_CRM_V1 loaded as plain text (not base64-encoded)",
-			zap.Int("secret_length", len(cfg.JWTSecretCRMV1)),
-		)
-		secretBytes = []byte(cfg.JWTSecretCRMV1)
-	} else {
-		// Successfully decoded from Base64
-		log.Info(ctx, "JWT_SECRET_CRM_V1 loaded from base64",
-			zap.Int("decoded_length", len(secretBytes)),
-		)
+		return fmt.Errorf("JWT_HS256_SECRET must be valid Base64-encoded: %w", err)
 	}
-	keyStore.LoadHS256Key("linkko-crm-web", "v1", secretBytes)
+	if len(secretBytes) < 32 {
+		return fmt.Errorf("JWT_HS256_SECRET decoded bytes must be at least 32 bytes (256 bits), got %d bytes", len(secretBytes))
+	}
+	log.Info(ctx, "JWT_HS256_SECRET loaded successfully",
+		zap.Int("decoded_bytes", len(secretBytes)),
+	)
 
-	// Load RS256 key for MCP server
-	if err := keyStore.LoadRS256Key("linkko-mcp-server", "v1", cfg.JWTPublicKeyMCPV1); err != nil {
-		return fmt.Errorf("failed to load MCP public key: %w", err)
+	// Parse allowed issuers from CSV
+	allowedIssuers := cfg.GetAllowedIssuers()
+	if len(allowedIssuers) == 0 {
+		return fmt.Errorf("JWT_ALLOWED_ISSUERS must contain at least one valid issuer")
+	}
+
+	// Load HS256 key for all allowed issuers (same secret for all)
+	for _, issuer := range allowedIssuers {
+		keyStore.LoadHS256Key(issuer, "v1", secretBytes)
+	}
+
+	// Load RS256 key for MCP server (if configured)
+	if cfg.JWTPublicKeyMCPV1 != "" {
+		if err := keyStore.LoadRS256Key("linkko-mcp-server", "v1", cfg.JWTPublicKeyMCPV1); err != nil {
+			return fmt.Errorf("failed to load MCP public key: %w", err)
+		}
 	}
 
 	// Create validators with clock skew
 	clockSkew := time.Duration(cfg.JWTClockSkewSeconds) * time.Second
-	hs256Validator := auth.NewHS256Validator(keyStore, "linkko-crm-web", clockSkew)
-	rs256Validator := auth.NewRS256Validator(keyStore, "linkko-mcp-server", clockSkew)
 
-	// Create resolver
-	allowedIssuers := cfg.GetAllowedIssuers()
+	// Create resolver with allowed issuers
 	resolver := auth.NewKeyResolver(allowedIssuers, []string{cfg.JWTAudience})
-	resolver.RegisterValidator("linkko-crm-web", hs256Validator)
-	resolver.RegisterValidator("linkko-mcp-server", rs256Validator)
+
+	// Register HS256 validator for all allowed issuers
+	for _, issuer := range allowedIssuers {
+		hs256Validator := auth.NewHS256Validator(keyStore, issuer, clockSkew)
+		resolver.RegisterValidator(issuer, hs256Validator)
+	}
+
+	// Register RS256 validator if configured
+	if cfg.JWTPublicKeyMCPV1 != "" {
+		rs256Validator := auth.NewRS256Validator(keyStore, "linkko-mcp-server", clockSkew)
+		resolver.RegisterValidator("linkko-mcp-server", rs256Validator)
+		// Add MCP issuer to allowed list if not already present
+		mcpIssuer := "linkko-mcp-server"
+		hasRs256Issuer := false
+		for _, issuer := range allowedIssuers {
+			if issuer == mcpIssuer {
+				hasRs256Issuer = true
+				break
+			}
+		}
+		if !hasRs256Issuer {
+			allowedIssuers = append(allowedIssuers, mcpIssuer)
+		}
+	}
+
 	log.Info(ctx, "JWT authentication initialized",
 		zap.Strings("allowed_issuers", allowedIssuers),
 		zap.Int("clock_skew_seconds", cfg.JWTClockSkewSeconds),
 	)
+
+	// Initialize S2S token store
+	s2sStore := auth.NewS2STokenStore()
+	if cfg.S2STokenCRM != "" {
+		s2sStore.RegisterToken(cfg.S2STokenCRM, "crm-web")
+		log.Info(ctx, "S2S token registered", zap.String("client", "crm-web"))
+	}
+	if cfg.S2STokenMCP != "" {
+		s2sStore.RegisterToken(cfg.S2STokenMCP, "mcp")
+		log.Info(ctx, "S2S token registered", zap.String("client", "mcp"))
+	}
 
 	// Initialize repositories
 	idempotencyRepo := repo.NewIdempotencyRepo(pool)
@@ -266,8 +306,8 @@ func runServe(cmd *cobra.Command, args []string) error {
 
 	// Protected routes with workspace isolation
 	r.Route("/v1/workspaces/{workspaceId}", func(r chi.Router) {
-		// Apply authentication, workspace validation, and rate limiting
-		r.Use(auth.JWTAuthMiddleware(resolver))
+		// Apply authentication (JWT and S2S), workspace validation, and rate limiting
+		r.Use(auth.AuthMiddleware(resolver, s2sStore))
 		r.Use(middleware.WorkspaceMiddleware)
 		r.Use(middleware.RateLimitMiddleware(rateLimiter, cfg.RateLimitPerWorkspacePerMin))
 

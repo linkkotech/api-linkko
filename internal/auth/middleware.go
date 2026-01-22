@@ -13,8 +13,8 @@ import (
 type contextKey string
 
 const (
-	claimsContextKey     contextKey = "claims"
-	authContextKey       contextKey = "auth_context"
+	claimsContextKey contextKey = "claims"
+	authContextKey   contextKey = "auth_context"
 )
 
 // JWTAuthMiddleware validates JWT tokens and injects claims into context
@@ -80,8 +80,8 @@ func JWTAuthMiddleware(resolver *KeyResolver) func(http.Handler) http.Handler {
 			authCtx := &AuthContext{
 				WorkspaceID: claims.WorkspaceID,
 				ActorID:     claims.ActorID,
-				ActorType:   "user",  // Default actor type
-				AuthMethod:  "jwt",   // Authentication method
+				ActorType:   "user", // Default actor type
+				AuthMethod:  "jwt",  // Authentication method
 				Issuer:      claims.Issuer,
 			}
 

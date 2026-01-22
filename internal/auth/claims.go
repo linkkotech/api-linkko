@@ -27,6 +27,7 @@ type AuthContext struct {
 	WorkspaceID string
 	ActorID     string
 	ActorType   string // "user", "service", etc.
-	AuthMethod  string // "jwt", "api_key", etc.
-	Issuer      string
+	AuthMethod  string // "jwt", "s2s", etc.
+	Issuer      string // For JWT: issuer claim
+	Client      string // For S2S: "crm-web", "mcp", etc.
 }

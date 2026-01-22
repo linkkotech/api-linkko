@@ -16,11 +16,19 @@ type Config struct {
 	RedisURL string `env:"REDIS_URL,required"`
 
 	// JWT Configuration
-	JWTSecretCRMV1     string `env:"JWT_SECRET_CRM_V1,required"`
-	JWTPublicKeyMCPV1  string `env:"JWT_PUBLIC_KEY_MCP_V1,required"`
-	JWTAllowedIssuers  string `env:"JWT_ALLOWED_ISSUERS,required"`
-	JWTAudience        string `env:"JWT_AUDIENCE,required"`
+	JWTHS256Secret      string `env:"JWT_HS256_SECRET,required"`    // Base64-encoded HMAC secret
+	JWTAllowedIssuers   string `env:"JWT_ALLOWED_ISSUERS,required"` // CSV list of allowed issuers (e.g., "linkko-crm-web,linkko-mcp-server")
+	JWTAudience         string `env:"JWT_AUDIENCE,required"`        // Expected JWT audience
 	JWTClockSkewSeconds int    `env:"JWT_CLOCK_SKEW_SECONDS" envDefault:"60"`
+
+	// Legacy JWT Configuration (deprecated)
+	JWTSecretCRMV1    string `env:"JWT_SECRET_CRM_V1"`     // Deprecated: use JWT_HS256_SECRET
+	JWTPublicKeyMCPV1 string `env:"JWT_PUBLIC_KEY_MCP_V1"` // Deprecated: use S2S tokens
+	JWTIssuer         string `env:"JWT_ISSUER"`            // Deprecated: use JWT_ALLOWED_ISSUERS (CSV)
+
+	// S2S (Service-to-Service) Tokens
+	S2STokenCRM string `env:"S2S_TOKEN_CRM"`
+	S2STokenMCP string `env:"S2S_TOKEN_MCP"`
 
 	// OpenTelemetry
 	OTELEnabled          bool    `env:"OTEL_ENABLED" envDefault:"true"`
@@ -56,24 +64,34 @@ func (c *Config) Validate() error {
 		return fmt.Errorf("DATABASE_URL is required")
 	}
 
+	// Validate JWT_HS256_SECRET (must be valid Base64)
+	if c.JWTHS256Secret == "" {
+		// Fallback to legacy variable
+		if c.JWTSecretCRMV1 != "" {
+			c.JWTHS256Secret = c.JWTSecretCRMV1
+		} else {
+			return fmt.Errorf("JWT_HS256_SECRET is required")
+		}
+	}
+
+	// Validate JWT_ALLOWED_ISSUERS (CSV list)
+	if c.JWTAllowedIssuers == "" {
+		// Fallback to legacy single issuer variable
+		if c.JWTIssuer != "" {
+			c.JWTAllowedIssuers = c.JWTIssuer
+		} else {
+			c.JWTAllowedIssuers = "linkko-crm-web" // default
+		}
+	}
+
+	// Validate that parsed issuers list is not empty
+	issuers := c.GetAllowedIssuers()
+	if len(issuers) == 0 {
+		return fmt.Errorf("JWT_ALLOWED_ISSUERS must contain at least one valid issuer")
+	}
+
 	if c.RedisURL == "" {
 		return fmt.Errorf("REDIS_URL is required")
-	}
-
-	if c.JWTSecretCRMV1 == "" {
-		return fmt.Errorf("JWT_SECRET_CRM_V1 is required")
-	}
-
-	if len(c.JWTSecretCRMV1) < 32 {
-		return fmt.Errorf("JWT_SECRET_CRM_V1 must be at least 32 characters")
-	}
-
-	if c.JWTPublicKeyMCPV1 == "" {
-		return fmt.Errorf("JWT_PUBLIC_KEY_MCP_V1 is required")
-	}
-
-	if c.JWTAllowedIssuers == "" {
-		return fmt.Errorf("JWT_ALLOWED_ISSUERS is required")
 	}
 
 	if c.JWTAudience == "" {

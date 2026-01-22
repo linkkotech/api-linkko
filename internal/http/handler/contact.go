@@ -9,6 +9,7 @@ import (
 
 	"linkko-api/internal/auth"
 	"linkko-api/internal/domain"
+	"linkko-api/internal/http/httperr"
 	"linkko-api/internal/observability/logger"
 	"linkko-api/internal/service"
 
@@ -33,7 +34,7 @@ func (h *ContactHandler) ListContacts(w http.ResponseWriter, r *http.Request) {
 
 	claims, ok := auth.GetClaims(ctx)
 	if !ok {
-		writeError(w, ctx, log, http.StatusUnauthorized, "UNAUTHORIZED", "authentication claims not found")
+		httperr.Unauthorized401(w, ctx, httperr.ErrCodeInvalidToken, "authentication required")
 		return
 	}
 
@@ -50,7 +51,7 @@ func (h *ContactHandler) ListContacts(w http.ResponseWriter, r *http.Request) {
 	if limitStr := r.URL.Query().Get("limit"); limitStr != "" {
 		limit, err := strconv.Atoi(limitStr)
 		if err != nil || limit < 1 || limit > 100 {
-			writeError(w, ctx, log, http.StatusBadRequest, "INVALID_LIMIT", "limit must be between 1 and 100")
+			httperr.BadRequest400(w, ctx, httperr.ErrCodeInvalidParameter, "limit must be between 1 and 100")
 			return
 		}
 		params.Limit = limit
@@ -99,7 +100,7 @@ func (h *ContactHandler) GetContact(w http.ResponseWriter, r *http.Request) {
 
 	claims, ok := auth.GetClaims(ctx)
 	if !ok {
-		writeError(w, ctx, log, http.StatusUnauthorized, "UNAUTHORIZED", "authentication claims not found")
+		httperr.Unauthorized401(w, ctx, httperr.ErrCodeInvalidToken, "authentication required")
 		return
 	}
 
@@ -134,7 +135,7 @@ func (h *ContactHandler) CreateContact(w http.ResponseWriter, r *http.Request) {
 
 	claims, ok := auth.GetClaims(ctx)
 	if !ok {
-		writeError(w, ctx, log, http.StatusUnauthorized, "UNAUTHORIZED", "authentication claims not found")
+		httperr.Unauthorized401(w, ctx, httperr.ErrCodeInvalidToken, "authentication required")
 		return
 	}
 
@@ -143,13 +144,13 @@ func (h *ContactHandler) CreateContact(w http.ResponseWriter, r *http.Request) {
 	var req domain.CreateContactRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		log.Warn(ctx, "invalid request body", zap.Error(err))
-		writeError(w, ctx, log, http.StatusBadRequest, "INVALID_REQUEST", "request body must be valid JSON")
+		httperr.BadRequest400(w, ctx, httperr.ErrCodeInvalidParameter, "request body must be valid JSON")
 		return
 	}
 
 	if err := req.Validate(); err != nil {
 		log.Warn(ctx, "validation failed", zap.Error(err))
-		writeError(w, ctx, log, http.StatusUnprocessableEntity, "VALIDATION_ERROR", err.Error())
+		httperr.WriteError(w, ctx, http.StatusUnprocessableEntity, httperr.ErrCodeValidationError, err.Error())
 		return
 	}
 
@@ -185,7 +186,7 @@ func (h *ContactHandler) UpdateContact(w http.ResponseWriter, r *http.Request) {
 
 	claims, ok := auth.GetClaims(ctx)
 	if !ok {
-		writeError(w, ctx, log, http.StatusUnauthorized, "UNAUTHORIZED", "authentication claims not found")
+		httperr.Unauthorized401(w, ctx, httperr.ErrCodeInvalidToken, "authentication required")
 		return
 	}
 
@@ -194,13 +195,13 @@ func (h *ContactHandler) UpdateContact(w http.ResponseWriter, r *http.Request) {
 	var req domain.UpdateContactRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		log.Warn(ctx, "invalid request body", zap.Error(err))
-		writeError(w, ctx, log, http.StatusBadRequest, "INVALID_REQUEST", "request body must be valid JSON")
+		httperr.BadRequest400(w, ctx, httperr.ErrCodeInvalidParameter, "request body must be valid JSON")
 		return
 	}
 
 	if err := req.Validate(); err != nil {
 		log.Warn(ctx, "validation failed", zap.Error(err))
-		writeError(w, ctx, log, http.StatusUnprocessableEntity, "VALIDATION_ERROR", err.Error())
+		httperr.WriteError(w, ctx, http.StatusUnprocessableEntity, httperr.ErrCodeValidationError, err.Error())
 		return
 	}
 
@@ -234,7 +235,7 @@ func (h *ContactHandler) DeleteContact(w http.ResponseWriter, r *http.Request) {
 
 	claims, ok := auth.GetClaims(ctx)
 	if !ok {
-		writeError(w, ctx, log, http.StatusUnauthorized, "UNAUTHORIZED", "authentication claims not found")
+		httperr.Unauthorized401(w, ctx, httperr.ErrCodeInvalidToken, "authentication required")
 		return
 	}
 
@@ -262,12 +263,6 @@ func (h *ContactHandler) DeleteContact(w http.ResponseWriter, r *http.Request) {
 
 // Helper functions for standardized responses
 
-type errorResponse struct {
-	Code    string `json:"code"`
-	Message string `json:"message"`
-	Details string `json:"details,omitempty"`
-}
-
 func writeJSON(w http.ResponseWriter, status int, data interface{}) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(status)
@@ -276,39 +271,24 @@ func writeJSON(w http.ResponseWriter, status int, data interface{}) {
 	}
 }
 
-func writeError(w http.ResponseWriter, ctx context.Context, log *logger.Logger, status int, code, message string) {
-	log.Error(ctx, "request failed",
-		zap.Int("statusCode", status),
-		zap.String("errorCode", code),
-		zap.String("message", message),
-	)
-
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(status)
-	_ = json.NewEncoder(w).Encode(errorResponse{
-		Code:    code,
-		Message: message,
-	})
-}
-
 func handleServiceError(w http.ResponseWriter, ctx context.Context, log *logger.Logger, err error) {
 	switch {
 	case errors.Is(err, service.ErrMemberNotFound):
-		writeError(w, ctx, log, http.StatusForbidden, "FORBIDDEN", "insufficient permissions for this workspace")
+		httperr.Forbidden403(w, ctx, httperr.ErrCodeForbidden, "insufficient permissions for this workspace")
 	case errors.Is(err, service.ErrUnauthorized):
-		writeError(w, ctx, log, http.StatusForbidden, "FORBIDDEN", "insufficient permissions for this action")
+		httperr.Forbidden403(w, ctx, httperr.ErrCodeForbidden, "insufficient permissions for this action")
 	case errors.Is(err, service.ErrContactNotFound):
-		writeError(w, ctx, log, http.StatusNotFound, "NOT_FOUND", "contact not found")
+		httperr.WriteError(w, ctx, http.StatusNotFound, "NOT_FOUND", "contact not found")
 	case errors.Is(err, service.ErrEmailConflict):
-		writeError(w, ctx, log, http.StatusConflict, "CONFLICT", "contact with this email already exists")
+		httperr.WriteError(w, ctx, http.StatusConflict, "CONFLICT", "contact with this email already exists")
 	case errors.Is(err, service.ErrConcurrencyConflict):
-		writeError(w, ctx, log, http.StatusConflict, "CONFLICT", "contact was modified by another request")
+		httperr.WriteError(w, ctx, http.StatusConflict, "CONFLICT", "contact was modified by another request")
 	case errors.Is(err, service.ErrInvalidOwner):
-		writeError(w, ctx, log, http.StatusUnprocessableEntity, "INVALID_OWNER", "owner does not belong to workspace")
+		httperr.WriteError(w, ctx, http.StatusUnprocessableEntity, "INVALID_OWNER", "owner does not belong to workspace")
 	case errors.Is(err, service.ErrInvalidCompany):
-		writeError(w, ctx, log, http.StatusUnprocessableEntity, "INVALID_COMPANY", "company does not belong to workspace")
+		httperr.WriteError(w, ctx, http.StatusUnprocessableEntity, "INVALID_COMPANY", "company does not belong to workspace")
 	default:
 		log.Error(ctx, "internal server error", zap.Error(err))
-		writeError(w, ctx, log, http.StatusInternalServerError, "INTERNAL_ERROR", "an internal error occurred")
+		httperr.InternalError500(w, ctx, "an internal error occurred")
 	}
 }
