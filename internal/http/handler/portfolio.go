@@ -8,6 +8,7 @@ import (
 
 	"linkko-api/internal/auth"
 	"linkko-api/internal/domain"
+	"linkko-api/internal/http/httperr"
 	"linkko-api/internal/observability/logger"
 	"linkko-api/internal/service"
 
@@ -35,7 +36,7 @@ func (h *PortfolioHandler) CreatePortfolioItem(w http.ResponseWriter, r *http.Re
 
 	var req domain.CreatePortfolioItemRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		writeErrorPortfolio(w, ctx, log, http.StatusBadRequest, "INVALID_REQUEST", "invalid JSON body")
+		httperr.BadRequest400(w, ctx, httperr.ErrCodeInvalidParameter, "invalid JSON body")
 		return
 	}
 
@@ -116,7 +117,7 @@ func (h *PortfolioHandler) UpdatePortfolioItem(w http.ResponseWriter, r *http.Re
 
 	var req domain.UpdatePortfolioItemRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		writeErrorPortfolio(w, ctx, log, http.StatusBadRequest, "INVALID_REQUEST", "invalid JSON body")
+		httperr.BadRequest400(w, ctx, httperr.ErrCodeInvalidParameter, "invalid JSON body")
 		return
 	}
 
@@ -156,24 +157,12 @@ func writeOKPortfolio(w http.ResponseWriter, status int, data interface{}) {
 	})
 }
 
-func writeErrorPortfolio(w http.ResponseWriter, ctx context.Context, log *logger.Logger, status int, code, message string) {
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(status)
-	_ = json.NewEncoder(w).Encode(map[string]interface{}{
-		"ok": false,
-		"error": map[string]string{
-			"code":    code,
-			"message": message,
-		},
-	})
-}
-
 func handlePortfolioError(w http.ResponseWriter, ctx context.Context, log *logger.Logger, err error) {
 	switch {
 	case errors.Is(err, service.ErrUnauthorized):
-		writeErrorPortfolio(w, ctx, log, http.StatusForbidden, "FORBIDDEN", "insufficient permissions")
+		httperr.Forbidden403(w, ctx, httperr.ErrCodeForbidden, "insufficient permissions")
 	default:
 		log.Error(ctx, "internal error", zap.Error(err))
-		writeErrorPortfolio(w, ctx, log, http.StatusInternalServerError, "INTERNAL_ERROR", "an internal error occurred")
+		httperr.InternalError500(w, ctx, "an internal error occurred")
 	}
 }
