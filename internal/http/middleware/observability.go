@@ -1,13 +1,20 @@
 package middleware
 
 import (
+	"errors"
+	"fmt"
 	"net/http"
 	"runtime/debug"
+	"strings"
 	"time"
 
+	"github.com/jackc/pgx/v5/pgconn"
+
+	"linkko-api/internal/http/httperr"
 	"linkko-api/internal/observability/logger"
 	"linkko-api/internal/observability/requestid"
 
+	"github.com/go-chi/chi/v5"
 	"go.uber.org/zap"
 )
 
@@ -46,8 +53,9 @@ func RequestLoggingMiddleware(log *logger.Logger) func(http.Handler) http.Handle
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			start := time.Now()
 
-			// Inject logger into context
+			// Inject logger and root error container into context
 			ctx := logger.SetLoggerInContext(r.Context(), log)
+			ctx = logger.InitRootErrorContext(ctx)
 
 			// Wrap response writer to capture status code
 			wrapped := &responseWriter{
@@ -77,13 +85,41 @@ func RequestLoggingMiddleware(log *logger.Logger) func(http.Handler) http.Handle
 				zap.String("remote_addr", sanitizeRemoteAddr(r.RemoteAddr)),
 				zap.String("user_agent", sanitizeUserAgent(r.UserAgent())),
 			)
+
+			// Tarefa B: Log detailed http_error for 5xx
+			if wrapped.statusCode >= 500 {
+				rootErr := logger.GetRootError(ctx)
+				kind := classifyError(rootErr)
+
+				fields := []zap.Field{
+					logger.Module("http"),
+					logger.Action("http_error"),
+					zap.Int("status", wrapped.statusCode),
+					zap.String("method", r.Method),
+					zap.String("route", getRoutePattern(r)),
+					zap.String("path", r.URL.Path),
+					zap.String("kind", kind),
+				}
+
+				if rootErr != nil {
+					fields = append(fields, zap.String("err", rootErr.Error()))
+
+					var pgErr *pgconn.PgError
+					if errors.As(rootErr, &pgErr) {
+						fields = append(fields, zap.String("pgcode", pgErr.Code))
+					}
+				} else {
+					fields = append(fields, zap.String("err", "internal server error (unspecified cause)"))
+				}
+
+				log.Error(ctx, "http_error", fields...)
+			}
 		})
 	}
 }
 
 // RecoveryMiddleware recovers from panics and logs with stack trace
 // Prevents service crash while preserving error context
-// Stack trace is allowed (no secrets in stack)
 func RecoveryMiddleware(log *logger.Logger) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -91,21 +127,29 @@ func RecoveryMiddleware(log *logger.Logger) func(http.Handler) http.Handler {
 				if err := recover(); err != nil {
 					// Get stack trace
 					stack := string(debug.Stack())
+					ctx := r.Context()
+					reqID := logger.GetRequestIDFromContext(ctx)
 
-					// Log panic with request_id
+					// Capture panic as root error for logging
+					recoveredErr := fmt.Errorf("panic: %v", err)
+					logger.SetRootError(ctx, recoveredErr)
+
+					// Log panic_recovered event as required
 					log.Error(
-						r.Context(),
-						"panic recovered",
+						ctx,
+						"panic_recovered",
 						logger.Module("http"),
 						logger.Action("panic_recovery"),
 						zap.Any("panic", err),
 						zap.String("stack", stack),
 						zap.String("method", r.Method),
-						zap.String("route", r.URL.Path),
+						zap.String("path", r.URL.Path),
+						zap.String("route", getRoutePattern(r)),
+						zap.String("request_id", reqID),
 					)
 
-					// Return 500 to client
-					http.Error(w, "Internal Server Error", http.StatusInternalServerError)
+					// Return standardized error via httperr
+					httperr.InternalError(w, ctx)
 				}
 			}()
 
@@ -164,6 +208,43 @@ func sanitizeUserAgent(ua string) string {
 		return ua[:maxLen] + "..."
 	}
 	return ua
+}
+
+// getRoutePattern extracts the chi route pattern from request context
+func getRoutePattern(r *http.Request) string {
+	if rctx := chi.RouteContext(r.Context()); rctx != nil {
+		pattern := rctx.RoutePattern()
+		if pattern != "" {
+			return pattern
+		}
+	}
+	return r.URL.Path
+}
+
+// classifyError identifies the category of the error for Tarefa B
+func classifyError(err error) string {
+	if err == nil {
+		return "unknown"
+	}
+
+	msg := strings.ToLower(err.Error())
+
+	// Classification priority
+	if strings.Contains(msg, "panic") {
+		return "panic"
+	}
+
+	if strings.Contains(msg, "scan") {
+		return "scan"
+	}
+
+	// Database errors (pgx)
+	var pgErr *pgconn.PgError
+	if errors.As(err, &pgErr) {
+		return "db"
+	}
+
+	return "unknown"
 }
 
 // WithWorkspaceID is a helper middleware to inject workspace_id into context

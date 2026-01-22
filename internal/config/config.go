@@ -41,6 +41,9 @@ type Config struct {
 
 	// Rate Limiting
 	RateLimitPerWorkspacePerMin int `env:"RATE_LIMIT_PER_WORKSPACE_PER_MIN" envDefault:"100"`
+
+	// Environment
+	AppEnv string `env:"APP_ENV" envDefault:"prod"`
 }
 
 // LoadConfig loads configuration from environment variables
@@ -108,6 +111,10 @@ func (c *Config) Validate() error {
 
 	if c.RateLimitPerWorkspacePerMin <= 0 {
 		return fmt.Errorf("RATE_LIMIT_PER_WORKSPACE_PER_MIN must be positive")
+	}
+
+	if c.AppEnv == "" {
+		c.AppEnv = "prod"
 	}
 
 	return nil

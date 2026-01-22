@@ -5,7 +5,8 @@ import (
 	"net/http"
 	"strings"
 
-	"linkko-api/internal/logger"
+	"linkko-api/internal/http/httperr"
+	"linkko-api/internal/observability/logger"
 
 	"go.uber.org/zap"
 )
@@ -26,26 +27,26 @@ func JWTAuthMiddleware(resolver *KeyResolver) func(http.Handler) http.Handler {
 			// Extract token from Authorization header
 			authHeader := r.Header.Get("Authorization")
 			if authHeader == "" {
-				log.Warn("authentication failed",
+				log.Warn(r.Context(), "authentication failed",
 					zap.String("auth_failure_reason", string(AuthFailureMissingAuthorization)),
 					zap.String("remote_addr", r.RemoteAddr),
 					zap.String("method", r.Method),
 					zap.String("path", r.URL.Path),
 				)
-				http.Error(w, "invalid token", http.StatusUnauthorized)
+				httperr.Unauthorized401(w, r.Context(), httperr.ErrCodeMissingAuthorization, "invalid token")
 				return
 			}
 
 			// Check Bearer format
 			parts := strings.Split(authHeader, " ")
 			if len(parts) != 2 || parts[0] != "Bearer" {
-				log.Warn("authentication failed",
+				log.Warn(r.Context(), "authentication failed",
 					zap.String("auth_failure_reason", string(AuthFailureInvalidScheme)),
 					zap.String("remote_addr", r.RemoteAddr),
 					zap.String("method", r.Method),
 					zap.String("path", r.URL.Path),
 				)
-				http.Error(w, "invalid token", http.StatusUnauthorized)
+				httperr.Unauthorized401(w, r.Context(), httperr.ErrCodeInvalidScheme, "invalid token")
 				return
 			}
 
@@ -63,8 +64,7 @@ func JWTAuthMiddleware(resolver *KeyResolver) func(http.Handler) http.Handler {
 					failureReason = string(AuthFailureUnknown)
 				}
 
-				// Log with detailed context (token masked for security)
-				log.Warn("authentication failed",
+				log.Warn(r.Context(), "authentication failed",
 					zap.String("auth_failure_reason", failureReason),
 					zap.String("token_prefix", maskToken(tokenString)),
 					zap.String("remote_addr", r.RemoteAddr),
@@ -72,7 +72,7 @@ func JWTAuthMiddleware(resolver *KeyResolver) func(http.Handler) http.Handler {
 					zap.String("path", r.URL.Path),
 					zap.Error(err),
 				)
-				http.Error(w, "invalid token", http.StatusUnauthorized)
+				httperr.Unauthorized401(w, r.Context(), httperr.ErrCodeInvalidToken, "invalid token")
 				return
 			}
 
@@ -90,7 +90,7 @@ func JWTAuthMiddleware(resolver *KeyResolver) func(http.Handler) http.Handler {
 			ctx = context.WithValue(ctx, authContextKey, authCtx)
 
 			// Log successful authentication
-			log.Info("authenticated request",
+			log.Info(r.Context(), "authenticated request",
 				zap.String("workspace_id", claims.WorkspaceID),
 				zap.String("actor_id", claims.ActorID),
 				zap.String("actor_type", authCtx.ActorType),

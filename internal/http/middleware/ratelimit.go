@@ -5,7 +5,8 @@ import (
 	"net/http"
 	"time"
 
-	"linkko-api/internal/logger"
+	"linkko-api/internal/http/httperr"
+	"linkko-api/internal/observability/logger"
 	"linkko-api/internal/ratelimit"
 
 	"go.opentelemetry.io/otel/trace"
@@ -21,16 +22,16 @@ func RateLimitMiddleware(limiter *ratelimit.RedisRateLimiter, limitPerMin int) f
 			// Get workspace ID from context (set by WorkspaceMiddleware)
 			workspaceID, ok := GetWorkspaceID(r.Context())
 			if !ok {
-				log.Error("workspace_id not found in context for rate limiting")
-				http.Error(w, "internal server error", http.StatusInternalServerError)
+				log.Error(r.Context(), "workspace_id not found in context for rate limiting")
+				httperr.InternalError(w, r.Context())
 				return
 			}
 
 			// Check rate limit
 			allowed, remaining, err := limiter.AllowRequest(r.Context(), workspaceID, limitPerMin, 60)
 			if err != nil {
-				log.Error("rate limit check failed", zap.Error(err))
-				http.Error(w, "internal server error", http.StatusInternalServerError)
+				log.Error(r.Context(), "rate limit check failed", zap.Error(err))
+				httperr.InternalError(w, r.Context())
 				return
 			}
 
@@ -44,13 +45,13 @@ func RateLimitMiddleware(limiter *ratelimit.RedisRateLimiter, limitPerMin int) f
 				span := trace.SpanFromContext(r.Context())
 				span.AddEvent("rate_limit_exceeded")
 
-				log.Warn("rate limit exceeded",
+				log.Warn(r.Context(), "rate limit exceeded",
 					zap.String("workspace_id", workspaceID),
 					zap.Int("limit", limitPerMin),
 				)
 
 				w.Header().Set("Retry-After", "60")
-				http.Error(w, "rate limit exceeded", http.StatusTooManyRequests)
+				httperr.WriteError(w, r.Context(), http.StatusTooManyRequests, "RATE_LIMIT_EXCEEDED", "rate limit exceeded")
 				return
 			}
 

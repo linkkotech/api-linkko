@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"strings"
 
+	"linkko-api/internal/observability/requestid"
+
 	"go.uber.org/zap"
 	"go.uber.org/zap/zapcore"
 )
@@ -14,10 +16,14 @@ type contextKey string
 
 const (
 	loggerContextKey      contextKey = "logger"
-	requestIDContextKey   contextKey = "request_id"
 	workspaceIDContextKey contextKey = "workspace_id"
 	userIDContextKey      contextKey = "user_id"
+	rootErrorContextKey   contextKey = "root_err"
 )
+
+type rootErrorContainer struct {
+	err error
+}
 
 // Logger wraps zap.Logger to enforce structured logging standards
 type Logger struct {
@@ -76,7 +82,7 @@ func New(serviceName string, level string) (*Logger, error) {
 func (l *Logger) WithContext(ctx context.Context) *Logger {
 	fields := []Field{}
 
-	if requestID := GetRequestIDFromContext(ctx); requestID != "" {
+	if requestID := requestid.GetRequestID(ctx); requestID != "" {
 		fields = append(fields, zap.String("request_id", requestID))
 	}
 
@@ -249,12 +255,7 @@ func parseLevel(level string) zapcore.Level {
 // Context value getters
 
 func GetRequestIDFromContext(ctx context.Context) string {
-	if v := ctx.Value(requestIDContextKey); v != nil {
-		if id, ok := v.(string); ok {
-			return id
-		}
-	}
-	return ""
+	return requestid.GetRequestID(ctx)
 }
 
 func GetWorkspaceIDFromContext(ctx context.Context) string {
@@ -278,7 +279,7 @@ func GetUserIDFromContext(ctx context.Context) string {
 // Context value setters
 
 func SetRequestIDInContext(ctx context.Context, requestID string) context.Context {
-	return context.WithValue(ctx, requestIDContextKey, requestID)
+	return requestid.SetRequestID(ctx, requestID)
 }
 
 func SetWorkspaceIDInContext(ctx context.Context, workspaceID string) context.Context {
@@ -304,4 +305,24 @@ func GetLogger(ctx context.Context) *Logger {
 // SetLoggerInContext stores logger in context
 func SetLoggerInContext(ctx context.Context, logger *Logger) context.Context {
 	return context.WithValue(ctx, loggerContextKey, logger)
+}
+
+// InitRootErrorContext initializes context with a pointer to hold the root error
+func InitRootErrorContext(ctx context.Context) context.Context {
+	return context.WithValue(ctx, rootErrorContextKey, &rootErrorContainer{})
+}
+
+// SetRootError sets the root cause error in the context container
+func SetRootError(ctx context.Context, err error) {
+	if container, ok := ctx.Value(rootErrorContextKey).(*rootErrorContainer); ok {
+		container.err = err
+	}
+}
+
+// GetRootError retrieves the root cause error from the context container
+func GetRootError(ctx context.Context) error {
+	if container, ok := ctx.Value(rootErrorContextKey).(*rootErrorContainer); ok {
+		return container.err
+	}
+	return nil
 }

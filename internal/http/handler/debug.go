@@ -1,31 +1,44 @@
 package handler
 
 import (
+	"context"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"os"
+	"time"
 
 	"linkko-api/internal/auth"
 	"linkko-api/internal/http/httperr"
 	"linkko-api/internal/observability/logger"
 
 	"github.com/go-chi/chi/v5"
+	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgconn"
+	"github.com/jackc/pgx/v5/pgxpool"
 	"go.uber.org/zap"
 )
+
+// DBPool interface for database operations needed by debug endpoints
+type DBPool interface {
+	QueryRow(ctx context.Context, sql string, args ...interface{}) pgx.Row
+}
 
 // DebugHandler provides debug endpoints for development
 type DebugHandler struct {
 	appEnv string
+	pool   DBPool
 }
 
 // NewDebugHandler creates a new debug handler
-func NewDebugHandler() *DebugHandler {
+func NewDebugHandler(pool *pgxpool.Pool) *DebugHandler {
 	appEnv := os.Getenv("APP_ENV")
 	if appEnv == "" {
 		appEnv = "production" // default to production for safety
 	}
 	return &DebugHandler{
 		appEnv: appEnv,
+		pool:   pool,
 	}
 }
 
@@ -122,4 +135,56 @@ func (h *DebugHandler) GetAuthDebugWithWorkspace(w http.ResponseWriter, r *http.
 	// Same implementation as GetAuthDebug
 	// The workspace middleware will validate the workspaceId before this handler is called
 	h.GetAuthDebug(w, r)
+}
+
+// PingDB checks database connectivity by executing SELECT 1
+// Only available in development mode (APP_ENV=dev)
+// GET /debug/db/ping
+func (h *DebugHandler) PingDB(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+	log := logger.GetLogger(ctx)
+
+	// Only allow in development mode
+	if h.appEnv != "dev" && h.appEnv != "development" {
+		log.Warn(ctx, "debug endpoint accessed in non-dev environment",
+			zap.String("app_env", h.appEnv),
+			zap.String("remote_addr", r.RemoteAddr),
+		)
+		http.NotFound(w, r)
+		return
+	}
+
+	// Execute SELECT 1 with timeout
+	pingCtx, cancel := context.WithTimeout(ctx, 2*time.Second)
+	defer cancel()
+
+	var result int
+	err := h.pool.QueryRow(pingCtx, "SELECT 1").Scan(&result)
+	if err != nil {
+		// Extract pgcode if available
+		var pgErr *pgconn.PgError
+		var pgcode string
+		if errors.As(err, &pgErr) {
+			pgcode = pgErr.Code
+		}
+
+		// Log the failure with detailed information (no secrets)
+		logFields := []zap.Field{
+			zap.String("request_id", logger.GetRequestIDFromContext(ctx)),
+			zap.Error(err),
+		}
+		if pgcode != "" {
+			logFields = append(logFields, zap.String("pgcode", pgcode))
+		}
+		log.Error(ctx, "db_ping_failed", logFields...)
+
+		// Return standardized error response
+		httperr.InternalError(w, ctx)
+		return
+	}
+
+	// Success response
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusOK)
+	_ = json.NewEncoder(w).Encode(map[string]bool{"ok": true})
 }

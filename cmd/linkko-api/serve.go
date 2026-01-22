@@ -247,6 +247,7 @@ func runServe(cmd *cobra.Command, args []string) error {
 	dealHandler := handler.NewDealHandler(dealService)
 	activityHandler := handler.NewActivityHandler(activityService)
 	portfolioHandler := handler.NewPortfolioHandler(portfolioService)
+	debugHandler := handler.NewDebugHandler(pool)
 
 	// Initialize rate limiter
 	var rateLimitCounter metric.Int64Counter
@@ -259,10 +260,10 @@ func runServe(cmd *cobra.Command, args []string) error {
 	r := chi.NewRouter()
 
 	// Global middlewares (applied to all routes)
-	// CRITICAL: Order matters - RequestID → Recovery → Logging → Telemetry
+	// CRITICAL: Order matters - RequestID → Logging → Recovery → Telemetry
 	r.Use(middleware.RequestIDMiddleware)                // 1. Generate/read request ID
-	r.Use(middleware.RecoveryMiddleware(log))            // 2. Catch panics before logging
-	r.Use(middleware.RequestLoggingMiddleware(log))      // 3. Log all requests with request_id
+	r.Use(middleware.RequestLoggingMiddleware(log))      // 2. Log all requests with request_id and latency
+	r.Use(middleware.RecoveryMiddleware(log))            // 3. Catch panics and write 500
 	r.Use(telemetry.OTelMiddleware(cfg.OTELServiceName)) // 4. OpenTelemetry tracing
 	if metrics != nil {
 		r.Use(telemetry.MetricsMiddleware(metrics)) // 5. Prometheus metrics (optional)
@@ -302,6 +303,13 @@ func runServe(cmd *cobra.Command, args []string) error {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusOK)
 		w.Write([]byte(`{"status":"ready"}`))
+	})
+
+	// Debug routes (dev-only, no authentication required)
+	r.Route("/debug", func(r chi.Router) {
+		r.Get("/auth", debugHandler.GetAuthDebug)
+		r.Get("/auth/workspaces/{workspaceId}", debugHandler.GetAuthDebugWithWorkspace)
+		r.Get("/db/ping", debugHandler.PingDB)
 	})
 
 	// Protected routes with workspace isolation

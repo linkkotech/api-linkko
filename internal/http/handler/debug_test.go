@@ -12,6 +12,8 @@ import (
 	"linkko-api/internal/observability/logger"
 
 	"github.com/go-chi/chi/v5"
+	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -23,10 +25,11 @@ func TestDebugHandler_GetAuthDebug_ProductionBlocked(t *testing.T) {
 
 	os.Setenv("APP_ENV", "production")
 
-	handler := NewDebugHandler()
+	handler := NewDebugHandler(nil)
 
+	log, _ := logger.New("test", "info")
 	req := httptest.NewRequest("GET", "/debug/auth", nil)
-	req = req.WithContext(logger.WithLogger(context.Background()))
+	req = req.WithContext(logger.SetLoggerInContext(context.Background(), log))
 
 	// Set auth context (even with valid auth, should return 404 in production)
 	authCtx := &auth.AuthContext{
@@ -51,10 +54,11 @@ func TestDebugHandler_GetAuthDebug_DevAllowed(t *testing.T) {
 
 	os.Setenv("APP_ENV", "dev")
 
-	handler := NewDebugHandler()
+	handler := NewDebugHandler(nil)
 
+	log, _ := logger.New("test", "info")
 	req := httptest.NewRequest("GET", "/debug/auth", nil)
-	req = req.WithContext(logger.WithLogger(context.Background()))
+	req = req.WithContext(logger.SetLoggerInContext(context.Background(), log))
 
 	// Set auth context
 	authCtx := &auth.AuthContext{
@@ -94,10 +98,11 @@ func TestDebugHandler_GetAuthDebug_NoAuth(t *testing.T) {
 
 	os.Setenv("APP_ENV", "dev")
 
-	handler := NewDebugHandler()
+	handler := NewDebugHandler(nil)
 
+	log, _ := logger.New("test", "info")
 	req := httptest.NewRequest("GET", "/debug/auth", nil)
-	req = req.WithContext(logger.WithLogger(context.Background()))
+	req = req.WithContext(logger.SetLoggerInContext(context.Background(), log))
 
 	// No auth context set
 
@@ -122,10 +127,11 @@ func TestDebugHandler_GetAuthDebug_JWTAuth(t *testing.T) {
 
 	os.Setenv("APP_ENV", "development") // Test with "development" as well
 
-	handler := NewDebugHandler()
+	handler := NewDebugHandler(nil)
 
+	log, _ := logger.New("test", "info")
 	req := httptest.NewRequest("GET", "/debug/auth", nil)
-	req = req.WithContext(logger.WithLogger(context.Background()))
+	req = req.WithContext(logger.SetLoggerInContext(context.Background(), log))
 
 	authCtx := &auth.AuthContext{
 		AuthMethod:  "jwt",
@@ -165,10 +171,11 @@ func TestDebugHandler_GetAuthDebug_S2SAuth(t *testing.T) {
 
 	os.Setenv("APP_ENV", "dev")
 
-	handler := NewDebugHandler()
+	handler := NewDebugHandler(nil)
 
+	log, _ := logger.New("test", "info")
 	req := httptest.NewRequest("GET", "/debug/auth", nil)
-	req = req.WithContext(logger.WithLogger(context.Background()))
+	req = req.WithContext(logger.SetLoggerInContext(context.Background(), log))
 
 	authCtx := &auth.AuthContext{
 		AuthMethod:  "s2s",
@@ -208,14 +215,15 @@ func TestDebugHandler_GetAuthDebugWithWorkspace(t *testing.T) {
 
 	os.Setenv("APP_ENV", "dev")
 
-	handler := NewDebugHandler()
+	handler := NewDebugHandler(nil)
 
 	// Create router to test path parameter extraction
 	r := chi.NewRouter()
 	r.Get("/debug/auth/workspaces/{workspaceId}", handler.GetAuthDebugWithWorkspace)
 
+	log, _ := logger.New("test", "info")
 	req := httptest.NewRequest("GET", "/debug/auth/workspaces/test-workspace-456", nil)
-	req = req.WithContext(logger.WithLogger(context.Background()))
+	req = req.WithContext(logger.SetLoggerInContext(context.Background(), log))
 
 	authCtx := &auth.AuthContext{
 		AuthMethod:  "jwt",
@@ -259,13 +267,14 @@ func TestDebugHandler_DefaultAppEnv(t *testing.T) {
 	// Unset APP_ENV to test default behavior
 	os.Unsetenv("APP_ENV")
 
-	handler := NewDebugHandler()
+	handler := NewDebugHandler(nil)
 
 	// Default should be "production" for safety
 	assert.Equal(t, "production", handler.appEnv)
 
+	log, _ := logger.New("test", "info")
 	req := httptest.NewRequest("GET", "/debug/auth", nil)
-	req = req.WithContext(logger.WithLogger(context.Background()))
+	req = req.WithContext(logger.SetLoggerInContext(context.Background(), log))
 
 	authCtx := &auth.AuthContext{
 		AuthMethod:  "jwt",
@@ -280,4 +289,144 @@ func TestDebugHandler_DefaultAppEnv(t *testing.T) {
 
 	// Should return 404 since default is production
 	assert.Equal(t, http.StatusNotFound, rec.Code)
+}
+
+func TestPingDB_Success_DevMode(t *testing.T) {
+	// Save original APP_ENV and restore after test
+	originalEnv := os.Getenv("APP_ENV")
+	defer os.Setenv("APP_ENV", originalEnv)
+
+	os.Setenv("APP_ENV", "dev")
+
+	// Create a mock pool that succeeds
+	mockPool := &mockPgxPool{
+		shouldFail: false,
+	}
+
+	handler := &DebugHandler{
+		appEnv: "dev",
+		pool:   mockPool,
+	}
+
+	log, _ := logger.New("test", "info")
+	req := httptest.NewRequest("GET", "/debug/db/ping", nil)
+	req = req.WithContext(logger.SetLoggerInContext(context.Background(), log))
+
+	rec := httptest.NewRecorder()
+	handler.PingDB(rec, req)
+
+	assert.Equal(t, http.StatusOK, rec.Code)
+	assert.Equal(t, "application/json", rec.Header().Get("Content-Type"))
+
+	var response map[string]bool
+	err := json.NewDecoder(rec.Body).Decode(&response)
+	require.NoError(t, err)
+
+	assert.True(t, response["ok"])
+}
+
+func TestPingDB_Failure_DevMode(t *testing.T) {
+	// Save original APP_ENV and restore after test
+	originalEnv := os.Getenv("APP_ENV")
+	defer os.Setenv("APP_ENV", originalEnv)
+
+	os.Setenv("APP_ENV", "dev")
+
+	// Create a mock pool that fails
+	mockPool := &mockPgxPool{
+		shouldFail: true,
+	}
+
+	handler := &DebugHandler{
+		appEnv: "dev",
+		pool:   mockPool,
+	}
+
+	log, _ := logger.New("test", "info")
+	req := httptest.NewRequest("GET", "/debug/db/ping", nil)
+	req = req.WithContext(logger.SetLoggerInContext(context.Background(), log))
+
+	rec := httptest.NewRecorder()
+	handler.PingDB(rec, req)
+
+	// Should return 500 with standardized error
+	assert.Equal(t, http.StatusInternalServerError, rec.Code)
+
+	var errResponse map[string]interface{}
+	err := json.NewDecoder(rec.Body).Decode(&errResponse)
+	require.NoError(t, err)
+
+	assert.False(t, errResponse["ok"].(bool))
+	assert.NotNil(t, errResponse["error"])
+}
+
+func TestPingDB_ProductionMode(t *testing.T) {
+	// Save original APP_ENV and restore after test
+	originalEnv := os.Getenv("APP_ENV")
+	defer os.Setenv("APP_ENV", originalEnv)
+
+	os.Setenv("APP_ENV", "production")
+
+	mockPool := &mockPgxPool{
+		shouldFail: false,
+	}
+
+	handler := &DebugHandler{
+		appEnv: "production",
+		pool:   mockPool,
+	}
+
+	log, _ := logger.New("test", "info")
+	req := httptest.NewRequest("GET", "/debug/db/ping", nil)
+	req = req.WithContext(logger.SetLoggerInContext(context.Background(), log))
+
+	rec := httptest.NewRecorder()
+	handler.PingDB(rec, req)
+
+	// Should return 404 in production
+	assert.Equal(t, http.StatusNotFound, rec.Code)
+}
+
+// mockPgxPool implements the minimal interface needed for testing PingDB
+type mockPgxPool struct {
+	shouldFail bool
+}
+
+func (m *mockPgxPool) QueryRow(ctx context.Context, sql string, args ...interface{}) pgx.Row {
+	return &mockRow{shouldFail: m.shouldFail}
+}
+
+func (m *mockPgxPool) Exec(ctx context.Context, sql string, arguments ...interface{}) (pgconn.CommandTag, error) {
+	return pgconn.CommandTag{}, nil
+}
+
+func (m *mockPgxPool) Query(ctx context.Context, sql string, args ...interface{}) (pgx.Rows, error) {
+	return nil, nil
+}
+
+func (m *mockPgxPool) Begin(ctx context.Context) (pgx.Tx, error) {
+	return nil, nil
+}
+
+func (m *mockPgxPool) Ping(ctx context.Context) error {
+	return nil
+}
+
+func (m *mockPgxPool) Close() {}
+
+type mockRow struct {
+	shouldFail bool
+}
+
+func (m *mockRow) Scan(dest ...interface{}) error {
+	if m.shouldFail {
+		return context.DeadlineExceeded
+	}
+	// Simulate successful SELECT 1
+	if len(dest) > 0 {
+		if intPtr, ok := dest[0].(*int); ok {
+			*intPtr = 1
+		}
+	}
+	return nil
 }

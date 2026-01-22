@@ -306,13 +306,16 @@ func writeJSON(w http.ResponseWriter, status int, data interface{}) {
 }
 
 func handleServiceError(w http.ResponseWriter, ctx context.Context, log *logger.Logger, err error) {
+	// Tarefa B: Capture the real error for observability
+	logger.SetRootError(ctx, err)
+
 	// Log error details for debugging before handling
 	unwrappedErr := errors.Unwrap(err)
 	errorType := "unknown"
 	if unwrappedErr != nil {
 		errorType = unwrappedErr.Error()
 	}
-	
+
 	log.Error(ctx, "service error occurred",
 		zap.Error(err),
 		zap.String("error_type", errorType),

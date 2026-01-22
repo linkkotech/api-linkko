@@ -6,7 +6,8 @@ import (
 	"io"
 	"net/http"
 
-	"linkko-api/internal/logger"
+	"linkko-api/internal/http/httperr"
+	"linkko-api/internal/observability/logger"
 	"linkko-api/internal/repo"
 
 	"go.uber.org/zap"
@@ -34,16 +35,16 @@ func IdempotencyMiddleware(idempotencyRepo *repo.IdempotencyRepo) func(http.Hand
 
 			// Validate key length
 			if len(idempotencyKey) > 255 {
-				log.Warn("idempotency key too long", zap.Int("length", len(idempotencyKey)))
-				http.Error(w, "idempotency key must be 255 characters or less", http.StatusBadRequest)
+				log.Warn(r.Context(), "idempotency key too long", zap.Int("length", len(idempotencyKey)))
+				httperr.BadRequest400(w, r.Context(), httperr.ErrCodeInvalidParameter, "idempotency key must be 255 characters or less")
 				return
 			}
 
 			// Get workspace ID
 			workspaceID, ok := GetWorkspaceID(r.Context())
 			if !ok {
-				log.Error("workspace_id not found in context for idempotency")
-				http.Error(w, "internal server error", http.StatusInternalServerError)
+				log.Error(r.Context(), "workspace_id not found in context for idempotency")
+				httperr.InternalError(w, r.Context())
 				return
 			}
 
@@ -56,14 +57,14 @@ func IdempotencyMiddleware(idempotencyRepo *repo.IdempotencyRepo) func(http.Hand
 			// Check if key exists
 			cached, err := idempotencyRepo.CheckKey(r.Context(), workspaceID, keyHash)
 			if err != nil {
-				log.Error("failed to check idempotency key", zap.Error(err))
-				http.Error(w, "internal server error", http.StatusInternalServerError)
+				log.Error(r.Context(), "failed to check idempotency key", zap.Error(err))
+				httperr.InternalError(w, r.Context())
 				return
 			}
 
 			// If key exists, return cached response
 			if cached != nil {
-				log.Info("returning cached response for idempotent request",
+				log.Info(r.Context(), "returning cached response for idempotent request",
 					zap.String("key_hash", keyHash),
 					zap.Int("status", cached.Status),
 				)
@@ -84,8 +85,8 @@ func IdempotencyMiddleware(idempotencyRepo *repo.IdempotencyRepo) func(http.Hand
 			if r.Body != nil {
 				requestBody, err = io.ReadAll(r.Body)
 				if err != nil {
-					log.Error("failed to read request body", zap.Error(err))
-					http.Error(w, "internal server error", http.StatusInternalServerError)
+					log.Error(r.Context(), "failed to read request body", zap.Error(err))
+					httperr.InternalError(w, r.Context())
 					return
 				}
 				// Restore body for downstream handlers
@@ -125,10 +126,10 @@ func IdempotencyMiddleware(idempotencyRepo *repo.IdempotencyRepo) func(http.Hand
 					recorder.headers,
 				)
 				if err != nil {
-					log.Error("failed to store idempotency result", zap.Error(err))
+					log.Error(r.Context(), "failed to store idempotency result", zap.Error(err))
 					// Don't fail the request, just log the error
 				} else {
-					log.Info("stored idempotent request result",
+					log.Info(r.Context(), "stored idempotent request result",
 						zap.String("key_hash", keyHash),
 						zap.Int("status", recorder.statusCode),
 					)

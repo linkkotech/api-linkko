@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"net/http"
+	"os"
 
 	"linkko-api/internal/observability/logger"
 
@@ -21,6 +22,7 @@ type ErrorDetail struct {
 	Code    string            `json:"code"`
 	Message string            `json:"message"`
 	Fields  map[string]string `json:"fields,omitempty"`
+	ErrorID string            `json:"error_id,omitempty"`
 }
 
 // Error codes for 401 Unauthorized (authentication failures)
@@ -62,11 +64,13 @@ const (
 // WriteError writes a standardized error response
 func WriteError(w http.ResponseWriter, ctx context.Context, status int, code, message string) {
 	log := logger.GetLogger(ctx)
+	reqID := logger.GetRequestIDFromContext(ctx)
 
 	log.Error(ctx, "request failed",
 		zap.Int("status_code", status),
 		zap.String("error_code", code),
 		zap.String("message", message),
+		zap.String("request_id", reqID),
 	)
 
 	response := ErrorResponse{
@@ -134,5 +138,34 @@ func BadRequest400WithFields(w http.ResponseWriter, ctx context.Context, code, m
 
 // InternalError500 writes a 500 Internal Server Error response
 func InternalError500(w http.ResponseWriter, ctx context.Context, message string) {
-	WriteError(w, ctx, http.StatusInternalServerError, ErrCodeInternalError, message)
+	reqID := logger.GetRequestIDFromContext(ctx)
+
+	log := logger.GetLogger(ctx)
+	log.Error(ctx, "internal server error",
+		zap.String("message", message),
+		zap.String("request_id", reqID),
+	)
+
+	// In prod, return generic message for security
+	response := ErrorResponse{
+		OK: false,
+		Error: &ErrorDetail{
+			Code:    ErrCodeInternalError,
+			Message: "Internal Server Error",
+		},
+	}
+
+	// APP_ENV detection
+	if os.Getenv("APP_ENV") == "dev" {
+		response.Error.ErrorID = reqID
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusInternalServerError)
+	_ = json.NewEncoder(w).Encode(response)
+}
+
+// InternalError is an alias for InternalError500 as requested
+func InternalError(w http.ResponseWriter, ctx context.Context) {
+	InternalError500(w, ctx, "internal server error")
 }

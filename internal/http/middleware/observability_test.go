@@ -154,6 +154,50 @@ func TestRecoveryMiddleware_RecoversPanic(t *testing.T) {
 	if rec.Code != http.StatusInternalServerError {
 		t.Errorf("expected status 500, got %d", rec.Code)
 	}
+
+	// Should return standardized JSON
+	expectedBody := `{"ok":false,"error":{"code":"INTERNAL_ERROR","message":"Internal Server Error"}}`
+	actualBody := strings.TrimSpace(rec.Body.String())
+	if actualBody != expectedBody {
+		t.Errorf("expected body %q, got %q", expectedBody, actualBody)
+	}
+}
+
+func TestRecoveryMiddleware_DevModeIncludeErrorID(t *testing.T) {
+	t.Setenv("APP_ENV", "dev")
+
+	log, err := logger.New("test-service", "info")
+	if err != nil {
+		t.Fatalf("failed to create logger: %v", err)
+	}
+	defer log.Sync()
+
+	handler := middleware.RequestIDMiddleware(
+		middleware.RecoveryMiddleware(log)(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			panic("dev panic")
+		})),
+	)
+
+	req := httptest.NewRequest(http.MethodGet, "/test", nil)
+	rec := httptest.NewRecorder()
+
+	handler.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusInternalServerError {
+		t.Errorf("expected status 500, got %d", rec.Code)
+	}
+
+	// Verify request_id (error_id) is present in body
+	body := rec.Body.String()
+	if !strings.Contains(body, `"error_id":"req_`) {
+		t.Errorf("expected body to contain error_id, got %q", body)
+	}
+
+	// Verify it echoes the X-Request-Id header
+	reqID := rec.Header().Get("X-Request-Id")
+	if !strings.Contains(body, reqID) {
+		t.Errorf("expected error_id %q in body, got %q", reqID, body)
+	}
 }
 
 func TestRecoveryMiddleware_DoesNotAffectNormalFlow(t *testing.T) {
