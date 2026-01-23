@@ -272,12 +272,12 @@ func (s *PipelineService) CreatePipelineWithStages(ctx context.Context, workspac
 		}
 
 		stage := &domain.PipelineStage{
-			ID:         generateID(),
-			PipelineID: &pipeline.ID,
+			ID:          generateID(),
+			PipelineID:  &pipeline.ID,
 			WorkspaceID: workspaceID,
-			Name:       stageReq.Name,
-			Group:      *stageReq.StageGroup,
-			OrderIndex: i + 1, // Auto-assign sequential orderIndex
+			Name:        stageReq.Name,
+			Group:       *stageReq.StageGroup,
+			OrderIndex:  i + 1, // Auto-assign sequential orderIndex
 		}
 
 		if stageReq.Description != nil {
@@ -529,12 +529,12 @@ func (s *PipelineService) CreateStage(ctx context.Context, workspaceID, pipeline
 	}
 
 	stage := &domain.PipelineStage{
-		ID:         generateID(),
-		PipelineID: &pipelineID,
+		ID:          generateID(),
+		PipelineID:  &pipelineID,
 		WorkspaceID: workspaceID,
-		Name:       req.Name,
-		Group:      *req.StageGroup,
-		OrderIndex: maxOrder + 1,
+		Name:        req.Name,
+		Group:       *req.StageGroup,
+		OrderIndex:  maxOrder + 1,
 	}
 
 	if req.Description != nil {

@@ -14,14 +14,12 @@ import (
 	"linkko-api/internal/config"
 	"linkko-api/internal/database"
 	"linkko-api/internal/http/handler"
-	"linkko-api/internal/http/middleware"
 	"linkko-api/internal/observability/logger"
 	"linkko-api/internal/ratelimit"
 	"linkko-api/internal/repo"
 	"linkko-api/internal/service"
 	"linkko-api/internal/telemetry"
 
-	"github.com/go-chi/chi/v5"
 	"github.com/redis/go-redis/v9"
 	"github.com/spf13/cobra"
 	"go.opentelemetry.io/otel/metric"
@@ -68,16 +66,15 @@ func runServe(cmd *cobra.Command, args []string) error {
 	}
 	log.Info(ctx, "migrations completed successfully")
 
-	// Initialize telemetry
-	log.Info(ctx, "initializing telemetry")
-
+	// Initialize telemetry strictly as opt-in
 	var tracerProvider *sdktrace.TracerProvider
 	var meterProvider *sdkmetric.MeterProvider
 	var metrics *telemetry.Metrics
 
-	// Inicializar telemetria apenas se habilitada
-	if cfg.OTELEnabled {
-		// Inicializar tracer
+	if cfg.TelemetryEnabled() {
+		log.Info(ctx, "initializing telemetry", zap.String("endpoint", cfg.OTELExporterEndpoint))
+
+		// Initialize tracer
 		tp, err := telemetry.InitTracer(ctx, cfg.OTELServiceName, cfg.OTELExporterEndpoint, cfg.OTELSamplingRatio)
 		if err != nil {
 			log.Warn(ctx, "failed to initialize tracer, continuing without tracing", zap.Error(err))
@@ -92,7 +89,7 @@ func runServe(cmd *cobra.Command, args []string) error {
 			}()
 		}
 
-		// Inicializar metrics
+		// Initialize metrics
 		mp, m, err := telemetry.InitMetrics(ctx, cfg.OTELServiceName, cfg.OTELExporterEndpoint)
 		if err != nil {
 			log.Warn(ctx, "failed to initialize metrics, continuing without metrics", zap.Error(err))
@@ -110,7 +107,7 @@ func runServe(cmd *cobra.Command, args []string) error {
 
 		log.Info(ctx, "telemetry initialized", zap.Bool("tracing", tracerProvider != nil), zap.Bool("metrics", metrics != nil))
 	} else {
-		log.Info(ctx, "telemetry disabled")
+		log.Info(ctx, "telemetry disabled (opt-in only or missing endpoint)")
 	}
 
 	// Connect to database
@@ -256,173 +253,24 @@ func runServe(cmd *cobra.Command, args []string) error {
 	}
 	rateLimiter := ratelimit.NewRedisRateLimiter(redisClient, rateLimitCounter)
 
-	// Create router
-	r := chi.NewRouter()
-
-	// Global middlewares (applied to all routes)
-	// CRITICAL: Order matters - RequestID → Logging → Recovery → Telemetry
-	r.Use(middleware.RequestIDMiddleware)                // 1. Generate/read request ID
-	r.Use(middleware.RequestLoggingMiddleware(log))      // 2. Log all requests with request_id and latency
-	r.Use(middleware.RecoveryMiddleware(log))            // 3. Catch panics and write 500
-	r.Use(telemetry.OTelMiddleware(cfg.OTELServiceName)) // 4. OpenTelemetry tracing
-	if metrics != nil {
-		r.Use(telemetry.MetricsMiddleware(metrics)) // 5. Prometheus metrics (optional)
-	}
-
-	// Public routes
-	// /health - Liveness probe (no dependencies checked)
-	r.Get("/health", func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusOK)
-		w.Write([]byte(`{"status":"ok"}`))
-	})
-
-	// /ready - Readiness probe (checks critical dependencies)
-	r.Get("/ready", func(w http.ResponseWriter, r *http.Request) {
-		ctx, cancel := context.WithTimeout(r.Context(), 2*time.Second)
-		defer cancel()
-
-		// Check database connectivity
-		if err := pool.Ping(ctx); err != nil {
-			log.Error(ctx, "readiness check failed: database unavailable", zap.Error(err))
-			w.Header().Set("Content-Type", "application/json")
-			w.WriteHeader(http.StatusServiceUnavailable)
-			w.Write([]byte(`{"status":"error","message":"database unavailable"}`))
-			return
-		}
-
-		// Check Redis connectivity
-		if err := redisClient.Ping(ctx).Err(); err != nil {
-			log.Error(ctx, "readiness check failed: redis unavailable", zap.Error(err))
-			w.Header().Set("Content-Type", "application/json")
-			w.WriteHeader(http.StatusServiceUnavailable)
-			w.Write([]byte(`{"status":"error","message":"redis unavailable"}`))
-			return
-		}
-
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusOK)
-		w.Write([]byte(`{"status":"ready"}`))
-	})
-
-	// Debug routes (dev-only, no authentication required)
-	r.Route("/debug", func(r chi.Router) {
-		r.Get("/auth", debugHandler.GetAuthDebug)
-		r.Get("/auth/workspaces/{workspaceId}", debugHandler.GetAuthDebugWithWorkspace)
-		r.Get("/db/ping", debugHandler.PingDB)
-	})
-
-	// Protected routes with workspace isolation
-	r.Route("/v1/workspaces/{workspaceId}", func(r chi.Router) {
-		// Apply authentication (JWT and S2S), workspace validation, and rate limiting
-		r.Use(auth.AuthMiddleware(resolver, s2sStore))
-		r.Use(middleware.WorkspaceMiddleware)
-		r.Use(middleware.RateLimitMiddleware(rateLimiter, cfg.RateLimitPerWorkspacePerMin))
-
-		// Contacts endpoints
-		r.Route("/contacts", func(r chi.Router) {
-			r.Get("/", contactHandler.ListContacts)
-			r.With(middleware.IdempotencyMiddleware(idempotencyRepo)).Post("/", contactHandler.CreateContact)
-
-			r.Route("/{contactId}", func(r chi.Router) {
-				r.Get("/", contactHandler.GetContact)
-				r.With(middleware.IdempotencyMiddleware(idempotencyRepo)).Patch("/", contactHandler.UpdateContact)
-				r.Delete("/", contactHandler.DeleteContact)
-			})
-		})
-
-		// Tasks endpoints (NEW)
-		r.Route("/tasks", func(r chi.Router) {
-			r.Get("/", taskHandler.ListTasks)
-			r.With(middleware.IdempotencyMiddleware(idempotencyRepo)).Post("/", taskHandler.CreateTask)
-
-			r.Route("/{taskId}", func(r chi.Router) {
-				r.Get("/", taskHandler.GetTask)
-				r.With(middleware.IdempotencyMiddleware(idempotencyRepo)).Patch("/", taskHandler.UpdateTask)
-				r.Delete("/", taskHandler.DeleteTask)
-
-				// Kanban drag-and-drop (action endpoint)
-				r.With(middleware.IdempotencyMiddleware(idempotencyRepo)).Post("/:move", taskHandler.MoveTask)
-			})
-		})
-
-		// Companies endpoints (NEW)
-		r.Route("/companies", func(r chi.Router) {
-			r.Get("/", companyHandler.ListCompanies)
-			r.With(middleware.IdempotencyMiddleware(idempotencyRepo)).Post("/", companyHandler.CreateCompany)
-
-			r.Route("/{companyId}", func(r chi.Router) {
-				r.Get("/", companyHandler.GetCompany)
-				r.With(middleware.IdempotencyMiddleware(idempotencyRepo)).Patch("/", companyHandler.UpdateCompany)
-				r.Delete("/", companyHandler.DeleteCompany)
-			})
-		})
-
-		// Pipelines endpoints (NEW)
-		r.Route("/pipelines", func(r chi.Router) {
-			r.Get("/", pipelineHandler.ListPipelines)
-			r.With(middleware.IdempotencyMiddleware(idempotencyRepo)).Post("/", pipelineHandler.CreatePipeline)
-
-			// Action endpoints
-			r.With(middleware.IdempotencyMiddleware(idempotencyRepo)).Post("/:create-with-stages", pipelineHandler.CreatePipelineWithStages)
-			r.With(middleware.IdempotencyMiddleware(idempotencyRepo)).Post("/:seed-default", pipelineHandler.SeedDefaultPipeline)
-
-			r.Route("/{pipelineId}", func(r chi.Router) {
-				r.Get("/", pipelineHandler.GetPipeline)
-				r.With(middleware.IdempotencyMiddleware(idempotencyRepo)).Patch("/", pipelineHandler.UpdatePipeline)
-				r.Delete("/", pipelineHandler.DeletePipeline)
-
-				// Stages nested endpoints
-				r.Route("/stages", func(r chi.Router) {
-					r.Get("/", pipelineHandler.ListStages)
-					r.With(middleware.IdempotencyMiddleware(idempotencyRepo)).Post("/", pipelineHandler.CreateStage)
-
-					r.Route("/{stageId}", func(r chi.Router) {
-						r.With(middleware.IdempotencyMiddleware(idempotencyRepo)).Patch("/", pipelineHandler.UpdateStage)
-						r.Delete("/", pipelineHandler.DeleteStage)
-					})
-				})
-			})
-		})
-
-		// Deals endpoints (NEW)
-		r.Route("/deals", func(r chi.Router) {
-			r.Get("/", dealHandler.ListDeals)
-			r.With(middleware.IdempotencyMiddleware(idempotencyRepo)).Post("/", dealHandler.CreateDeal)
-
-			r.Route("/{dealId}", func(r chi.Router) {
-				r.Get("/", dealHandler.GetDeal)
-				r.With(middleware.IdempotencyMiddleware(idempotencyRepo)).Patch("/", dealHandler.UpdateDeal)
-
-				// Stage update (action)
-				r.With(middleware.IdempotencyMiddleware(idempotencyRepo)).Post("/:move", dealHandler.UpdateDealStage)
-			})
-		})
-
-		// Timeline / Activities endpoints (NEW)
-		r.Route("/timeline", func(r chi.Router) {
-			r.Get("/", activityHandler.ListTimeline)
-
-			r.Route("/notes", func(r chi.Router) {
-				r.With(middleware.IdempotencyMiddleware(idempotencyRepo)).Post("/", activityHandler.CreateNote)
-			})
-
-			r.Route("/calls", func(r chi.Router) {
-				r.With(middleware.IdempotencyMiddleware(idempotencyRepo)).Post("/", activityHandler.CreateCall)
-			})
-		})
-
-		// Portfolio endpoints (NEW)
-		r.Route("/portfolio", func(r chi.Router) {
-			r.Get("/", portfolioHandler.ListPortfolioItems)
-			r.With(middleware.IdempotencyMiddleware(idempotencyRepo)).Post("/", portfolioHandler.CreatePortfolioItem)
-
-			r.Route("/{itemID}", func(r chi.Router) {
-				r.Get("/", portfolioHandler.GetPortfolioItem)
-				r.With(middleware.IdempotencyMiddleware(idempotencyRepo)).Patch("/", portfolioHandler.UpdatePortfolioItem)
-				r.Delete("/", portfolioHandler.DeletePortfolioItem)
-			})
-		})
+	// Build router
+	r := buildRouter(RouterDeps{
+		Cfg:              cfg,
+		Log:              log,
+		Resolver:         resolver,
+		S2SStore:         s2sStore,
+		IdempotencyRepo:  idempotencyRepo,
+		RateLimiter:      rateLimiter,
+		Metrics:          metrics,
+		Pool:             pool,
+		ContactHandler:   contactHandler,
+		TaskHandler:      taskHandler,
+		CompanyHandler:   companyHandler,
+		PipelineHandler:  pipelineHandler,
+		DealHandler:      dealHandler,
+		ActivityHandler:  activityHandler,
+		PortfolioHandler: portfolioHandler,
+		DebugHandler:     debugHandler,
 	})
 
 	// Create HTTP server

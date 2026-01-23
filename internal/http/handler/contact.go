@@ -331,19 +331,19 @@ func handleServiceError(w http.ResponseWriter, ctx context.Context, log *logger.
 		httperr.Forbidden403(w, ctx, httperr.ErrCodeForbidden, "insufficient permissions for this action")
 	case errors.Is(err, service.ErrContactNotFound):
 		log.Debug(ctx, "contact not found", zap.Error(err))
-		httperr.WriteError(w, ctx, http.StatusNotFound, "NOT_FOUND", "contact not found")
+		httperr.WriteError(w, ctx, http.StatusNotFound, httperr.ErrCodeNotFound, "contact not found")
 	case errors.Is(err, service.ErrEmailConflict):
 		log.Warn(ctx, "email conflict", zap.Error(err))
-		httperr.WriteError(w, ctx, http.StatusConflict, "CONFLICT", "contact with this email already exists")
+		httperr.WriteError(w, ctx, http.StatusConflict, httperr.ErrCodeConflict, "contact with this email already exists")
 	case errors.Is(err, service.ErrConcurrencyConflict):
 		log.Warn(ctx, "concurrency conflict", zap.Error(err))
-		httperr.WriteError(w, ctx, http.StatusConflict, "CONFLICT", "contact was modified by another request")
+		httperr.WriteError(w, ctx, http.StatusConflict, httperr.ErrCodeConflict, "contact was modified by another request")
 	case errors.Is(err, service.ErrInvalidOwner):
 		log.Warn(ctx, "invalid owner", zap.Error(err))
-		httperr.WriteError(w, ctx, http.StatusUnprocessableEntity, "INVALID_OWNER", "owner does not belong to workspace")
+		httperr.WriteError(w, ctx, http.StatusUnprocessableEntity, httperr.ErrCodeValidationError, "owner does not belong to workspace")
 	case errors.Is(err, service.ErrInvalidCompany):
 		log.Warn(ctx, "invalid company", zap.Error(err))
-		httperr.WriteError(w, ctx, http.StatusUnprocessableEntity, "INVALID_COMPANY", "company does not belong to workspace")
+		httperr.WriteError(w, ctx, http.StatusUnprocessableEntity, httperr.ErrCodeValidationError, "company does not belong to workspace")
 	default:
 		log.Error(ctx, "unhandled internal server error", zap.Error(err), zap.String("error_details", err.Error()))
 		httperr.InternalError500(w, ctx, "an internal error occurred")

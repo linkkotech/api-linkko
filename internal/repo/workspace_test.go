@@ -9,7 +9,6 @@ import (
 	"linkko-api/internal/domain"
 	"linkko-api/internal/repo"
 
-	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -53,13 +52,13 @@ func TestWorkspaceRepository_GetMemberRole_Integration(t *testing.T) {
 	defer cleanup()
 
 	tests := []struct {
-		name             string
-		workspaceRoleID  string // CUID format
-		expectedRole     domain.Role
-		setupMember      bool
-		expectedError    error
-		errorContains    string
-		validateIsValid  bool
+		name            string
+		workspaceRoleID string // CUID format
+		expectedRole    domain.Role
+		setupMember     bool
+		expectedError   error
+		errorContains   string
+		validateIsValid bool
 	}{
 		{
 			name:            "work_admin role mapping (CUID to semantic name)",

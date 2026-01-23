@@ -34,7 +34,9 @@ func InitTracer(ctx context.Context, serviceName, endpoint string, samplingRatio
 	exporter, err := otlptracegrpc.New(ctx,
 		otlptracegrpc.WithEndpoint(endpoint),
 		otlptracegrpc.WithInsecure(), // Use for dev, configure TLS for production
-		otlptracegrpc.WithDialOption(grpc.WithBlock()),
+		// REMOVED: otlptracegrpc.WithDialOption(grpc.WithBlock())
+		// Rationale: Startup must never block waiting for the collector.
+		// The SDK handles retries in the background.
 		otlptracegrpc.WithDialOption(grpc.WithTransportCredentials(insecure.NewCredentials())),
 	)
 	if err != nil {

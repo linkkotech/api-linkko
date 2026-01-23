@@ -42,7 +42,8 @@ func InitMetrics(ctx context.Context, serviceName, endpoint string) (*sdkmetric.
 	exporter, err := otlpmetricgrpc.New(ctx,
 		otlpmetricgrpc.WithEndpoint(endpoint),
 		otlpmetricgrpc.WithInsecure(),
-		otlpmetricgrpc.WithDialOption(grpc.WithBlock()),
+		// REMOVED: otlpmetricgrpc.WithDialOption(grpc.WithBlock())
+		// Rationale: Startup must never block waiting for the collector.
 		otlpmetricgrpc.WithDialOption(grpc.WithTransportCredentials(insecure.NewCredentials())),
 	)
 	if err != nil {

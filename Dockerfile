@@ -46,14 +46,13 @@ RUN chmod +x /usr/local/bin/linkko-api /usr/local/bin/entrypoint.sh && \
     chown -R appuser:appuser /app
 
 # Environment defaults
-ENV PORT=3001
-ENV GIN_MODE=release
+ENV PORT=3002
 
 # Switch to non-root user
 USER appuser
 
 # Expose the API port
-EXPOSE 3001
+EXPOSE 3002
 
 # Use our entrypoint script
 ENTRYPOINT ["entrypoint.sh"]

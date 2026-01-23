@@ -41,6 +41,7 @@ const (
 	ErrCodeWorkspaceMismatch = "WORKSPACE_MISMATCH"
 	ErrCodeForbidden         = "FORBIDDEN"
 	ErrCodeInsufficientScope = "INSUFFICIENT_SCOPE"
+	ErrCodeNotFound          = "NOT_FOUND" // Added
 )
 
 // Error codes for 400 Bad Request (validation errors)
@@ -54,6 +55,7 @@ const (
 	ErrCodeInvalidStatus      = "INVALID_STATUS"
 	ErrCodeInvalidPriority    = "INVALID_PRIORITY"
 	ErrCodeInvalidType        = "INVALID_TYPE"
+	ErrCodeConflict           = "CONFLICT" // Added
 )
 
 // Error codes for 500 Internal Server Error

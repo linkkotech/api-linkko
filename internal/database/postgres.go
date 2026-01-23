@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
@@ -21,6 +22,10 @@ func NewPool(ctx context.Context, databaseURL string) (*pgxpool.Pool, error) {
 	config.HealthCheckPeriod = 1 * time.Minute
 	config.MaxConnLifetime = 1 * time.Hour
 	config.MaxConnIdleTime = 30 * time.Minute
+
+	// CORREÇÃO PARA SUPABASE POOLER (PGBouncer)
+	// Desabilita o cache de prepared statements que causa o erro SQLSTATE 42P05
+	config.ConnConfig.DefaultQueryExecMode = pgx.QueryExecModeSimpleProtocol
 
 	// Create pool
 	pool, err := pgxpool.NewWithConfig(ctx, config)

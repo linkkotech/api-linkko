@@ -180,8 +180,15 @@ func sanitizeQuery(query string) string {
 		return ""
 	}
 
-	// For production: parse and filter sensitive keys (token, password, etc.)
-	// For now: truncate long queries to prevent log bloat
+	// Redação simples de chaves sensíveis
+	lower := strings.ToLower(query)
+	sensitiveKeys := []string{"token=", "secret=", "password=", "key=", "auth=", "authorization="}
+	for _, key := range sensitiveKeys {
+		if strings.Contains(lower, key) {
+			return "[REDACTED_SENSITIVE_DATA]"
+		}
+	}
+
 	const maxLen = 200
 	if len(query) > maxLen {
 		return query[:maxLen] + "..."

@@ -158,14 +158,13 @@ func (s *ContactService) CreateContact(ctx context.Context, workspaceID, actorID
 
 	// Business validation: if company_id provided, validate it belongs to workspace
 	if req.CompanyID != nil {
-		// TODO (ETAPA 2): Descomentar após migrar CompanyRepository.ExistsInWorkspace() para string IDs
-		// exists, err := s.companyRepo.ExistsInWorkspace(ctx, workspaceID, *req.CompanyID)
-		// if err != nil {
-		// 	return nil, fmt.Errorf("validate company: %w", err)
-		// }
-		// if !exists {
-		// 	return nil, ErrInvalidCompany
-		// }
+		exists, err := s.companyRepo.ExistsInWorkspace(ctx, workspaceID, *req.CompanyID)
+		if err != nil {
+			return nil, fmt.Errorf("validate company: %w", err)
+		}
+		if !exists {
+			return nil, ErrInvalidCompany
+		}
 	}
 
 	contact := &domain.Contact{
@@ -250,14 +249,13 @@ func (s *ContactService) UpdateContact(ctx context.Context, workspaceID, contact
 
 	// Business validation: if company_id provided, validate it belongs to workspace
 	if req.CompanyID != nil {
-		// TODO (ETAPA 2): Descomentar após migrar CompanyRepository.ExistsInWorkspace() para string IDs
-		// exists, err := s.companyRepo.ExistsInWorkspace(ctx, workspaceID, *req.CompanyID)
-		// if err != nil {
-		// 	return nil, fmt.Errorf("validate company: %w", err)
-		// }
-		// if !exists {
-		// 	return nil, ErrInvalidCompany
-		// }
+		exists, err := s.companyRepo.ExistsInWorkspace(ctx, workspaceID, *req.CompanyID)
+		if err != nil {
+			return nil, fmt.Errorf("validate company: %w", err)
+		}
+		if !exists {
+			return nil, ErrInvalidCompany
+		}
 	}
 
 	contact, err := s.contactRepo.Update(ctx, workspaceID, contactID, req, current.UpdatedAt)

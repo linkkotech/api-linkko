@@ -1058,3 +1058,21 @@ go build -o linkko-api ./cmd/linkko-api
 ## 📝 Licença
 
 Proprietary - Linkko © 2026
+## 📖 Documentação da API
+
+A documentação da API está disponível via **Scalar** nos endpoints:
+
+- **Scalar UI**: [http://localhost:8080/docs](http://localhost:8080/docs)
+- **OpenAPI Spec**: [http://localhost:8080/openapi.yaml](http://localhost:8080/openapi.yaml)
+
+### Sincronização do Spec
+O arquivo de documentação oficial reside em `api/openapi.yaml`. Para fins de deploy (embedding via `go:embed`), uma cópia é mantida em `internal/http/docs/openapi.yaml`.
+
+**Sempre que alterar o spec oficial**, você deve sincronizar a cópia interna:
+
+```bash
+make openapi-sync
+```
+
+> [!IMPORTANT]
+> O CI (futuro) ou o processo de build depende da versão sincronizada em `internal/http/docs/openapi.yaml`. Não esqueça de rodar o comando e commitar ambos os arquivos.

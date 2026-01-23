@@ -307,17 +307,20 @@ func (h *CompanyHandler) DeleteCompany(w http.ResponseWriter, r *http.Request) {
 
 // handleCompanyServiceError maps service errors to HTTP responses
 func handleCompanyServiceError(w http.ResponseWriter, ctx context.Context, log *logger.Logger, err error) {
+	// Tarefa B: Capturar o erro real para observabilidade
+	logger.SetRootError(ctx, err)
+
 	switch {
 	case errors.Is(err, service.ErrMemberNotFound):
 		httperr.Forbidden403(w, ctx, httperr.ErrCodeForbidden, "insufficient permissions for this workspace")
 	case errors.Is(err, service.ErrUnauthorized):
 		httperr.Forbidden403(w, ctx, httperr.ErrCodeForbidden, "insufficient permissions for this action")
 	case errors.Is(err, service.ErrCompanyNotFound):
-		httperr.WriteError(w, ctx, http.StatusNotFound, "NOT_FOUND", "company not found")
+		httperr.WriteError(w, ctx, http.StatusNotFound, httperr.ErrCodeNotFound, "company not found")
 	case errors.Is(err, service.ErrCompanyDomainConflict):
-		httperr.WriteError(w, ctx, http.StatusConflict, "CONFLICT", "company with this domain already exists")
+		httperr.WriteError(w, ctx, http.StatusConflict, httperr.ErrCodeConflict, "company with this domain already exists")
 	default:
 		log.Error(ctx, "unexpected service error", zap.Error(err))
-		httperr.InternalError500(w, ctx, "an unexpected error occurred")
+		httperr.InternalError(w, ctx)
 	}
 }

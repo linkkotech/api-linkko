@@ -1,0 +1,1896 @@
+openapi: 3.0.3
+info:
+  title: Linkko API
+  version: 1.0.0
+  description: |
+    API transacional multi-tenant para o ecossistema Linkko.
+    
+    **Multi-tenant**: Todas as rotas tenant-scoped estão em `/v1/workspaces/{workspaceId}/...`
+    
+    **Autenticação**: Bearer token JWT e S2S.
+    
+servers:
+  - url: http://localhost:8080
+    description: Desenvolvimento local
+  - url: https://api.linkko.app
+    description: Produção
+
+tags:
+  - name: Contacts
+    description: Gerenciamento de pessoas e contatos
+  - name: Companies
+    description: Gerenciamento de empresas e organizações
+  - name: Tasks
+    description: Gestão de tarefas e atividades com Kanban
+  - name: Pipelines
+    description: Gerenciamento de funis e estágios de processo
+  - name: Deals
+    description: Gerenciamento de negócios e oportunidades B2B
+  - name: Timeline
+    description: Histórico cronológico de atividades e interações
+  - name: Portfolio
+    description: Gerenciamento de catálogo de produtos e serviços
+  - name: Docs
+    description: Documentação técnica da API
+
+security:
+  - bearerAuth: []
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: Token JWT ou S2S.
+
+  parameters:
+    workspaceId:
+      name: workspaceId
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+      description: UUID do workspace (tenant)
+    
+    taskId:
+      name: taskId
+      in: path
+      required: true
+      schema:
+        type: string
+      description: Identificador da tarefa
+
+    companyId:
+      name: companyId
+      in: path
+      required: true
+      schema:
+        type: string
+      description: Identificador da empresa
+
+    pipelineId:
+      name: pipelineId
+      in: path
+      required: true
+      schema:
+        type: string
+      description: Identificador do pipeline
+
+    stageId:
+      name: stageId
+      in: path
+      required: true
+      schema:
+        type: string
+      description: Identificador do estágio
+
+    dealId:
+      name: dealId
+      in: path
+      required: true
+      schema:
+        type: string
+      description: Identificador do negócio
+
+    portfolioItemId:
+      name: itemID
+      in: path
+      required: true
+      schema:
+        type: string
+      description: Identificador do item do portfólio
+
+    limit:
+      name: limit
+      in: query
+      schema:
+        type: integer
+        minimum: 1
+        maximum: 100
+        default: 50
+      description: Número máximo de itens por página
+    
+    cursor:
+      name: cursor
+      in: query
+      schema:
+        type: string
+      description: Cursor para paginação (opaco)
+    
+    sort:
+      name: sort
+      in: query
+      schema:
+        type: string
+      description: Campo de ordenação
+
+  schemas:
+    Error:
+      type: object
+      required:
+        - ok
+        - error
+      properties:
+        ok:
+          type: boolean
+          example: false
+        error:
+          type: object
+          required:
+            - code
+            - message
+          properties:
+            code:
+              type: string
+              example: VALIDATION_ERROR
+            message:
+              type: string
+              example: Invalid input data
+            error_id:
+              type: string
+              example: req-123
+              nullable: true
+
+    PaginatedMeta:
+      type: object
+      required:
+        - hasNextPage
+      properties:
+        hasNextPage:
+          type: boolean
+        nextCursor:
+          type: string
+          nullable: true
+
+    # --- Tasks ---
+
+    Priority:
+      type: string
+      enum: [LOW, MEDIUM, HIGH, URGENT]
+
+    TaskStatus:
+      type: string
+      enum: [TODO, IN_PROGRESS, DONE, CANCELLED, BACKLOG]
+
+    TaskType:
+      type: string
+      enum: [CALL, EMAIL, MEETING, FOLLOWUP, OTHER, TASK]
+
+    Task:
+      type: object
+      required:
+        - id
+        - workspaceId
+        - title
+        - status
+        - priority
+        - type
+        - position
+        - actorId
+        - createdAt
+        - updatedAt
+      properties:
+        id:
+          type: string
+        workspaceId:
+          type: string
+        title:
+          type: string
+        description:
+          type: string
+          nullable: true
+        status:
+          $ref: '#/components/schemas/TaskStatus'
+        priority:
+          $ref: '#/components/schemas/Priority'
+        type:
+          $ref: '#/components/schemas/TaskType'
+        position:
+          type: number
+        actorId:
+          type: string
+        assignedTo:
+          type: string
+          nullable: true
+        contactId:
+          type: string
+          nullable: true
+        dueDate:
+          type: string
+          format: date-time
+          nullable: true
+        completedAt:
+          type: string
+          format: date-time
+          nullable: true
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+
+    CreateTaskRequest:
+      type: object
+      required:
+        - title
+      properties:
+        title:
+          type: string
+        description:
+          type: string
+        status:
+          $ref: '#/components/schemas/TaskStatus'
+        priority:
+          $ref: '#/components/schemas/Priority'
+        type:
+          $ref: '#/components/schemas/TaskType'
+        assignedTo:
+          type: string
+        contactId:
+          type: string
+        dueDate:
+          type: string
+          format: date-time
+
+    UpdateTaskRequest:
+      type: object
+      properties:
+        title:
+          type: string
+        description:
+          type: string
+        priority:
+          $ref: '#/components/schemas/Priority'
+        type:
+          $ref: '#/components/schemas/TaskType'
+        assignedTo:
+          type: string
+        contactId:
+          type: string
+        dueDate:
+          type: string
+          format: date-time
+        completedAt:
+          type: string
+          format: date-time
+
+    MoveTaskRequest:
+      type: object
+      required:
+        - toStatus
+      properties:
+        toStatus:
+          $ref: '#/components/schemas/TaskStatus'
+        beforeTaskId:
+          type: string
+        afterTaskId:
+          type: string
+
+    TaskListResponse:
+      type: object
+      required:
+        - data
+        - meta
+      properties:
+        data:
+          type: array
+          items:
+            $ref: '#/components/schemas/Task'
+        meta:
+          $ref: '#/components/schemas/PaginatedMeta'
+
+    # --- Companies ---
+
+    CompanyLifecycleStage:
+      type: string
+      enum: [LEAD, MQL, SQL, CUSTOMER, CHURNED]
+
+    CompanySize:
+      type: string
+      enum: [STARTUP, SMB, MID_MARKET, ENTERPRISE]
+
+    Company:
+      type: object
+      required:
+        - id
+        - workspaceId
+        - name
+        - lifecycleStage
+        - companySize
+        - ownerId
+        - createdAt
+        - updatedAt
+      properties:
+        id:
+          type: string
+        workspaceId:
+          type: string
+        name:
+          type: string
+        domain:
+          type: string
+          nullable: true
+        industry:
+          type: string
+          nullable: true
+        lifecycleStage:
+          $ref: '#/components/schemas/CompanyLifecycleStage'
+        companySize:
+          $ref: '#/components/schemas/CompanySize'
+        phone:
+          type: string
+          nullable: true
+        email:
+          type: string
+          nullable: true
+        website:
+          type: string
+          nullable: true
+        annualRevenue:
+          type: number
+          nullable: true
+        employeeCount:
+          type: integer
+          nullable: true
+        ownerId:
+          type: string
+        tags:
+          type: array
+          items:
+            type: string
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+
+    CreateCompanyRequest:
+      type: object
+      required:
+        - name
+      properties:
+        name:
+          type: string
+        domain:
+          type: string
+        industry:
+          type: string
+        lifecycleStage:
+          $ref: '#/components/schemas/CompanyLifecycleStage'
+        companySize:
+          $ref: '#/components/schemas/CompanySize'
+        phone:
+          type: string
+        email:
+          type: string
+        website:
+          type: string
+        annualRevenue:
+          type: number
+        employeeCount:
+          type: integer
+        ownerId:
+          type: string
+        tags:
+          type: array
+          items:
+            type: string
+
+    UpdateCompanyRequest:
+      type: object
+      properties:
+        name:
+          type: string
+        domain:
+          type: string
+        industry:
+          type: string
+        lifecycleStage:
+          $ref: '#/components/schemas/CompanyLifecycleStage'
+        companySize:
+          $ref: '#/components/schemas/CompanySize'
+        phone:
+          type: string
+        email:
+          type: string
+        website:
+          type: string
+        annualRevenue:
+          type: number
+        employeeCount:
+          type: integer
+        ownerId:
+          type: string
+        tags:
+          type: array
+          items:
+            type: string
+
+    CompanyListResponse:
+      type: object
+      required:
+        - data
+        - meta
+      properties:
+        data:
+          type: array
+          items:
+            $ref: '#/components/schemas/Company'
+        meta:
+          $ref: '#/components/schemas/PaginatedMeta'
+
+    # --- Contacts ---
+
+    Contact:
+      type: object
+      required:
+        - id
+        - workspaceId
+        - name
+        - email
+        - createdAt
+        - updatedAt
+      properties:
+        id:
+          type: string
+          format: uuid
+        workspaceId:
+          type: string
+          format: uuid
+        name:
+          type: string
+        email:
+          type: string
+          format: email
+        phone:
+          type: string
+          nullable: true
+        companyId:
+          type: string
+          format: uuid
+          nullable: true
+        ownerId:
+          type: string
+          format: uuid
+        tags:
+          type: array
+          items:
+            type: string
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+
+    CreateContactRequest:
+      type: object
+      required:
+        - name
+        - email
+      properties:
+        name:
+          type: string
+        email:
+          type: string
+          format: email
+        phone:
+          type: string
+        companyId:
+          type: string
+          format: uuid
+        ownerId:
+          type: string
+          format: uuid
+        tags:
+          type: array
+          items:
+            type: string
+
+    UpdateContactRequest:
+      type: object
+      properties:
+        name:
+          type: string
+        email:
+          type: string
+          format: email
+        phone:
+          type: string
+        companyId:
+          type: string
+          format: uuid
+        ownerId:
+          type: string
+          format: uuid
+        tags:
+          type: array
+          items:
+            type: string
+
+    ContactListResponse:
+      type: object
+      required:
+        - data
+        - meta
+      properties:
+        data:
+          type: array
+          items:
+            $ref: '#/components/schemas/Contact'
+        meta:
+          $ref: '#/components/schemas/PaginatedMeta'
+
+    # --- Pipelines ---
+
+    StageGroup:
+      type: string
+      enum: [OPEN, ACTIVE, DONE, CLOSED]
+
+    PipelineType:
+      type: string
+      enum: [TASK, DEAL, TICKET, CONTACT]
+
+    PipelineStage:
+      type: object
+      required:
+        - id
+        - workspaceId
+        - name
+        - group
+        - type
+        - orderIndex
+        - isLocked
+        - probability
+        - createdAt
+        - updatedAt
+      properties:
+        id:
+          type: string
+        pipelineId:
+          type: string
+          nullable: true
+        workspaceId:
+          type: string
+        name:
+          type: string
+        description:
+          type: string
+          nullable: true
+        group:
+          $ref: '#/components/schemas/StageGroup'
+        type:
+          $ref: '#/components/schemas/PipelineType'
+        orderIndex:
+          type: integer
+        color:
+          type: string
+          nullable: true
+        isLocked:
+          type: boolean
+        probability:
+          type: integer
+        autoArchiveDays:
+          type: integer
+          nullable: true
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+
+    Pipeline:
+      type: object
+      required:
+        - id
+        - workspaceId
+        - name
+        - pipelineType
+        - isActive
+        - isDefault
+        - ownerId
+        - createdAt
+        - updatedAt
+      properties:
+        id:
+          type: string
+        workspaceId:
+          type: string
+        name:
+          type: string
+        description:
+          type: string
+          nullable: true
+        pipelineType:
+          $ref: '#/components/schemas/PipelineType'
+        isActive:
+          type: boolean
+        isDefault:
+          type: boolean
+        ownerId:
+          type: string
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+        stages:
+          type: array
+          items:
+            $ref: '#/components/schemas/PipelineStage'
+
+    CreatePipelineRequest:
+      type: object
+      required:
+        - name
+      properties:
+        name:
+          type: string
+        description:
+          type: string
+        isDefault:
+          type: boolean
+        pipelineType:
+          $ref: '#/components/schemas/PipelineType'
+        isActive:
+          type: boolean
+        ownerId:
+          type: string
+
+    UpdatePipelineRequest:
+      type: object
+      properties:
+        name:
+          type: string
+        description:
+          type: string
+        isDefault:
+          type: boolean
+
+    CreateStageRequest:
+      type: object
+      required:
+        - name
+      properties:
+        name:
+          type: string
+        description:
+          type: string
+        stageGroup:
+          $ref: '#/components/schemas/StageGroup'
+        orderIndex:
+          type: integer
+        probability:
+          type: integer
+        autoArchiveDays:
+          type: integer
+        color:
+          type: string
+
+    CreatePipelineWithStagesRequest:
+      type: object
+      required:
+        - pipeline
+      properties:
+        pipeline:
+          $ref: '#/components/schemas/CreatePipelineRequest'
+        stages:
+          type: array
+          items:
+            $ref: '#/components/schemas/CreateStageRequest'
+
+    UpdateStageRequest:
+      type: object
+      properties:
+        name:
+          type: string
+        description:
+          type: string
+        group:
+          $ref: '#/components/schemas/StageGroup'
+        type:
+          $ref: '#/components/schemas/PipelineType'
+        orderIndex:
+          type: integer
+        color:
+          type: string
+        isLocked:
+          type: boolean
+
+    PipelineListResponse:
+      type: object
+      required:
+        - data
+        - meta
+      properties:
+        data:
+          type: array
+          items:
+            $ref: '#/components/schemas/Pipeline'
+        meta:
+          $ref: '#/components/schemas/PaginatedMeta'
+
+    # --- Deals ---
+
+    DealStageEnum:
+      type: string
+      enum: [OPEN, WON, LOST]
+
+    Deal:
+      type: object
+      required:
+        - id
+        - workspaceId
+        - pipelineId
+        - name
+        - currency
+        - stage
+        - createdById
+        - createdAt
+        - updatedAt
+      properties:
+        id:
+          type: string
+        workspaceId:
+          type: string
+        pipelineId:
+          type: string
+        stageId:
+          type: string
+          nullable: true
+        contactId:
+          type: string
+          nullable: true
+        companyId:
+          type: string
+          nullable: true
+        name:
+          type: string
+        value:
+          type: number
+          nullable: true
+        currency:
+          type: string
+        stage:
+          $ref: '#/components/schemas/DealStageEnum'
+        probability:
+          type: integer
+          nullable: true
+        expectedCloseDate:
+          type: string
+          format: date-time
+          nullable: true
+        closedAt:
+          type: string
+          format: date-time
+          nullable: true
+        lostReason:
+          type: string
+          nullable: true
+        description:
+          type: string
+          nullable: true
+        ownerId:
+          type: string
+          nullable: true
+        createdById:
+          type: string
+        updatedById:
+          type: string
+          nullable: true
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+        contactName:
+          type: string
+        companyName:
+          type: string
+
+    CreateDealRequest:
+      type: object
+      required:
+        - name
+        - pipelineId
+      properties:
+        name:
+          type: string
+        pipelineId:
+          type: string
+        stageId:
+          type: string
+        contactId:
+          type: string
+        companyId:
+          type: string
+        value:
+          type: number
+        currency:
+          type: string
+        probability:
+          type: integer
+        expectedCloseDate:
+          type: string
+          format: date-time
+        description:
+          type: string
+        ownerId:
+          type: string
+
+    UpdateDealRequest:
+      type: object
+      properties:
+        name:
+          type: string
+        value:
+          type: number
+        currency:
+          type: string
+        probability:
+          type: integer
+        expectedCloseDate:
+          type: string
+          format: date-time
+        description:
+          type: string
+        ownerId:
+          type: string
+
+    UpdateDealStageRequest:
+      type: object
+      required:
+        - stageId
+      properties:
+        stageId:
+          type: string
+        stage:
+          $ref: '#/components/schemas/DealStageEnum'
+        reason:
+          type: string
+        closedAt:
+          type: string
+          format: date-time
+
+    DealListResponse:
+      type: object
+      required:
+        - data
+      properties:
+        data:
+          type: array
+          items:
+            $ref: '#/components/schemas/Deal'
+
+    # --- Timeline & Activities ---
+
+    ActivityType:
+      type: string
+      enum: [NOTE, TASK, EMAIL, CALL, MEETING, MESSAGE, LIFECYCLE_CHANGE]
+
+    MessageDirection:
+      type: string
+      enum: [INBOUND, OUTBOUND]
+
+    Activity:
+      type: object
+      required:
+        - id
+        - workspaceId
+        - activityType
+        - userId
+        - createdAt
+      properties:
+        id:
+          type: string
+        workspaceId:
+          type: string
+        companyId:
+          type: string
+          nullable: true
+        contactId:
+          type: string
+          nullable: true
+        dealId:
+          type: string
+          nullable: true
+        activityType:
+          $ref: '#/components/schemas/ActivityType'
+        activityId:
+          type: string
+          nullable: true
+          description: ID do recurso específico (NoteID, CallID, etc.)
+        userId:
+          type: string
+        metadata:
+          type: string
+          format: binary
+          description: Dados brutos em formato bytes/JSON
+        createdAt:
+          type: string
+          format: date-time
+
+    Note:
+      type: object
+      required:
+        - id
+        - workspaceId
+        - content
+        - isPinned
+        - userId
+        - createdAt
+        - updatedAt
+      properties:
+        id:
+          type: string
+        workspaceId:
+          type: string
+        companyId:
+          type: string
+          nullable: true
+        contactId:
+          type: string
+          nullable: true
+        dealId:
+          type: string
+          nullable: true
+        content:
+          type: string
+        isPinned:
+          type: boolean
+        userId:
+          type: string
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+        deletedAt:
+          type: string
+          format: date-time
+          nullable: true
+
+    Call:
+      type: object
+      required:
+        - id
+        - workspaceId
+        - contactId
+        - direction
+        - userId
+        - calledAt
+        - createdAt
+      properties:
+        id:
+          type: string
+        workspaceId:
+          type: string
+        contactId:
+          type: string
+        companyId:
+          type: string
+          nullable: true
+        direction:
+          $ref: '#/components/schemas/MessageDirection'
+        duration:
+          type: integer
+          nullable: true
+        recordingUrl:
+          type: string
+          nullable: true
+        summary:
+          type: string
+          nullable: true
+        userId:
+          type: string
+        calledAt:
+          type: string
+          format: date-time
+        createdAt:
+          type: string
+          format: date-time
+
+    CreateNoteRequest:
+      type: object
+      required:
+        - content
+      properties:
+        content:
+          type: string
+        companyId:
+          type: string
+        contactId:
+          type: string
+        dealId:
+          type: string
+
+    CreateCallRequest:
+      type: object
+      required:
+        - contactId
+        - direction
+        - calledAt
+      properties:
+        contactId:
+          type: string
+        companyId:
+          type: string
+        direction:
+          $ref: '#/components/schemas/MessageDirection'
+        duration:
+          type: integer
+        recordingUrl:
+          type: string
+        summary:
+          type: string
+        calledAt:
+          type: string
+          format: date-time
+
+    # --- Portfolio ---
+
+    PortfolioCategory:
+      type: string
+      enum: [PRODUCT, SERVICE, REAL_ESTATE, LODGING, EVENT]
+
+    PortfolioVertical:
+      type: string
+      enum: [GENERAL, HEALTHCARE, AESTHETICS, BEAUTY, RETAIL, REAL_ESTATE, HOSTING, EVENTS, GENERAL_LOCAL, B2B_CORPORATE]
+
+    PortfolioStatus:
+      type: string
+      enum: [DRAFT, ACTIVE, INACTIVE, UNAVAILABLE, ARCHIVED]
+
+    PortfolioVisibility:
+      type: string
+      enum: [PUBLIC, INTERNAL]
+
+    PortfolioItem:
+      type: object
+      required:
+        - id
+        - workspaceId
+        - name
+        - category
+        - vertical
+        - status
+        - visibility
+        - basePrice
+        - currency
+        - createdById
+        - createdAt
+        - updatedAt
+      properties:
+        id:
+          type: string
+        workspaceId:
+          type: string
+        name:
+          type: string
+        description:
+          type: string
+          nullable: true
+        sku:
+          type: string
+          nullable: true
+        category:
+          $ref: '#/components/schemas/PortfolioCategory'
+        vertical:
+          $ref: '#/components/schemas/PortfolioVertical'
+        status:
+          $ref: '#/components/schemas/PortfolioStatus'
+        visibility:
+          $ref: '#/components/schemas/PortfolioVisibility'
+        basePrice:
+          type: number
+        currency:
+          type: string
+        imageUrl:
+          type: string
+          nullable: true
+        metadata:
+          type: object
+          additionalProperties: true
+        tags:
+          type: array
+          items:
+            type: string
+        createdById:
+          type: string
+        updatedById:
+          type: string
+          nullable: true
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+        deletedAt:
+          type: string
+          format: date-time
+          nullable: true
+
+    CreatePortfolioItemRequest:
+      type: object
+      required:
+        - name
+        - category
+        - vertical
+      properties:
+        name:
+          type: string
+        description:
+          type: string
+        sku:
+          type: string
+        category:
+          $ref: '#/components/schemas/PortfolioCategory'
+        vertical:
+          $ref: '#/components/schemas/PortfolioVertical'
+        status:
+          $ref: '#/components/schemas/PortfolioStatus'
+        visibility:
+          $ref: '#/components/schemas/PortfolioVisibility'
+        basePrice:
+          type: number
+        currency:
+          type: string
+        imageUrl:
+          type: string
+        metadata:
+          type: object
+          additionalProperties: true
+        tags:
+          type: array
+          items:
+            type: string
+
+    UpdatePortfolioItemRequest:
+      type: object
+      properties:
+        name:
+          type: string
+        description:
+          type: string
+        sku:
+          type: string
+        category:
+          $ref: '#/components/schemas/PortfolioCategory'
+        vertical:
+          $ref: '#/components/schemas/PortfolioVertical'
+        status:
+          $ref: '#/components/schemas/PortfolioStatus'
+        visibility:
+          $ref: '#/components/schemas/PortfolioVisibility'
+        basePrice:
+          type: number
+        currency:
+          type: string
+        imageUrl:
+          type: string
+        metadata:
+          type: object
+          additionalProperties: true
+        tags:
+          type: array
+          items:
+            type: string
+
+    PortfolioItemResponse:
+      type: object
+      required:
+        - ok
+        - data
+      properties:
+        ok:
+          type: boolean
+          example: true
+        data:
+          $ref: '#/components/schemas/PortfolioItem'
+
+    PortfolioListResponse:
+      type: object
+      required:
+        - ok
+        - data
+      properties:
+        ok:
+          type: boolean
+          example: true
+        data:
+          type: array
+          items:
+            $ref: '#/components/schemas/PortfolioItem'
+
+paths:
+  /health:
+    get:
+      summary: Health check
+      security: []
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+
+  /ready:
+    get:
+      summary: Readiness check
+      security: []
+      responses:
+        '200':
+          description: OK
+        '503':
+          description: Service Unavailable
+
+  /openapi.yaml:
+    get:
+      summary: OpenAPI spec
+      tags: [Docs]
+      security: []
+      responses:
+        '200':
+          description: OK
+          content:
+            application/yaml:
+              schema:
+                type: string
+
+  /docs:
+    get:
+      summary: Documentation
+      tags: [Docs]
+      security: []
+      responses:
+        '200':
+          description: OK
+          content:
+            text/html:
+              schema:
+                type: string
+
+  /v1/workspaces/{workspaceId}/contacts:
+    parameters:
+      - $ref: '#/components/parameters/workspaceId'
+    get:
+      summary: Listar contatos
+      operationId: listContacts
+      tags: [Contacts]
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ContactListResponse'
+    post:
+      summary: Criar contato
+      operationId: createContact
+      tags: [Contacts]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateContactRequest'
+      responses:
+        '201':
+          description: Created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Contact'
+
+  /v1/workspaces/{workspaceId}/contacts/{contactId}:
+    parameters:
+      - $ref: '#/components/parameters/workspaceId'
+      - name: contactId
+        in: path
+        required: true
+        schema:
+          type: string
+    get:
+      summary: Obter contato
+      operationId: getContact
+      tags: [Contacts]
+      responses:
+        '200':
+          description: OK
+    patch:
+      summary: Atualizar contato
+      operationId: updateContact
+      tags: [Contacts]
+      responses:
+        '200':
+          description: OK
+    delete:
+      summary: Deletar contato
+      operationId: deleteContact
+      tags: [Contacts]
+      responses:
+        '204':
+          description: No Content
+
+  /v1/workspaces/{workspaceId}/tasks:
+    parameters:
+      - $ref: '#/components/parameters/workspaceId'
+    get:
+      summary: Listar tarefas
+      operationId: listTasks
+      tags: [Tasks]
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TaskListResponse'
+    post:
+      summary: Criar tarefa
+      operationId: createTask
+      tags: [Tasks]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateTaskRequest'
+      responses:
+        '201':
+          description: Created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Task'
+
+  /v1/workspaces/{workspaceId}/tasks/{taskId}:
+    parameters:
+      - $ref: '#/components/parameters/workspaceId'
+      - $ref: '#/components/parameters/taskId'
+    get:
+      summary: Obter tarefa
+      operationId: getTask
+      tags: [Tasks]
+      responses:
+        '200':
+          description: OK
+    patch:
+      summary: Atualizar tarefa
+      operationId: updateTask
+      tags: [Tasks]
+      responses:
+        '200':
+          description: OK
+    delete:
+      summary: Deletar tarefa
+      operationId: deleteTask
+      tags: [Tasks]
+      responses:
+        '204':
+          description: No Content
+
+  /v1/workspaces/{workspaceId}/tasks/{taskId}/:move:
+    parameters:
+      - $ref: '#/components/parameters/workspaceId'
+      - $ref: '#/components/parameters/taskId'
+    post:
+      summary: Mover tarefa
+      operationId: moveTask
+      tags: [Tasks]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/MoveTaskRequest'
+      responses:
+        '200':
+          description: OK
+
+  /v1/workspaces/{workspaceId}/companies:
+    parameters:
+      - $ref: '#/components/parameters/workspaceId'
+    get:
+      summary: Listar empresas
+      operationId: listCompanies
+      tags: [Companies]
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CompanyListResponse'
+    post:
+      summary: Criar empresa
+      operationId: createCompany
+      tags: [Companies]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateCompanyRequest'
+      responses:
+        '201':
+          description: Created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Company'
+
+  /v1/workspaces/{workspaceId}/companies/{companyId}:
+    parameters:
+      - $ref: '#/components/parameters/workspaceId'
+      - $ref: '#/components/parameters/companyId'
+    get:
+      summary: Obter empresa
+      operationId: getCompany
+      tags: [Companies]
+      responses:
+        '200':
+          description: OK
+    patch:
+      summary: Atualizar empresa
+      operationId: updateCompany
+      tags: [Companies]
+      responses:
+        '200':
+          description: OK
+    delete:
+      summary: Deletar empresa
+      operationId: deleteCompany
+      tags: [Companies]
+      responses:
+        '204':
+          description: No Content
+
+  /v1/workspaces/{workspaceId}/pipelines:
+    parameters:
+      - $ref: '#/components/parameters/workspaceId'
+    get:
+      summary: Listar pipelines
+      operationId: listPipelines
+      tags: [Pipelines]
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PipelineListResponse'
+    post:
+      summary: Criar pipeline
+      operationId: createPipeline
+      tags: [Pipelines]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreatePipelineRequest'
+      responses:
+        '201':
+          description: Created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Pipeline'
+
+  /v1/workspaces/{workspaceId}/pipelines/:create-with-stages:
+    parameters:
+      - $ref: '#/components/parameters/workspaceId'
+    post:
+      summary: Criar pipeline com estágios
+      operationId: createPipelineWithStages
+      tags: [Pipelines]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreatePipelineWithStagesRequest'
+      responses:
+        '201':
+          description: Created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Pipeline'
+
+  /v1/workspaces/{workspaceId}/pipelines/:seed-default:
+    parameters:
+      - $ref: '#/components/parameters/workspaceId'
+    post:
+      summary: Semear pipeline padrão
+      operationId: seedDefaultPipeline
+      tags: [Pipelines]
+      responses:
+        '201':
+          description: Created
+
+  /v1/workspaces/{workspaceId}/pipelines/{pipelineId}:
+    parameters:
+      - $ref: '#/components/parameters/workspaceId'
+      - $ref: '#/components/parameters/pipelineId'
+    get:
+      summary: Obter pipeline
+      operationId: getPipeline
+      tags: [Pipelines]
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Pipeline'
+    patch:
+      summary: Atualizar pipeline
+      operationId: updatePipeline
+      tags: [Pipelines]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdatePipelineRequest'
+      responses:
+        '200':
+          description: OK
+    delete:
+      summary: Deletar pipeline
+      operationId: deletePipeline
+      tags: [Pipelines]
+      responses:
+        '204':
+          description: No Content
+
+  /v1/workspaces/{workspaceId}/pipelines/{pipelineId}/stages:
+    parameters:
+      - $ref: '#/components/parameters/workspaceId'
+      - $ref: '#/components/parameters/pipelineId'
+    get:
+      summary: Listar estágios
+      operationId: listStages
+      tags: [Pipelines]
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/PipelineStage'
+    post:
+      summary: Criar estágio
+      operationId: createStage
+      tags: [Pipelines]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateStageRequest'
+      responses:
+        '201':
+          description: Created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PipelineStage'
+
+  /v1/workspaces/{workspaceId}/pipelines/{pipelineId}/stages/{stageId}:
+    parameters:
+      - $ref: '#/components/parameters/workspaceId'
+      - $ref: '#/components/parameters/pipelineId'
+      - $ref: '#/components/parameters/stageId'
+    patch:
+      summary: Atualizar estágio
+      operationId: updateStage
+      tags: [Pipelines]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateStageRequest'
+      responses:
+        '200':
+          description: OK
+    delete:
+      summary: Deletar estágio
+      operationId: deleteStage
+      tags: [Pipelines]
+      responses:
+        '204':
+          description: No Content
+
+  /v1/workspaces/{workspaceId}/deals:
+    parameters:
+      - $ref: '#/components/parameters/workspaceId'
+    get:
+      summary: Listar negócios
+      operationId: listDeals
+      tags: [Deals]
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DealListResponse'
+    post:
+      summary: Criar negócio
+      operationId: createDeal
+      tags: [Deals]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateDealRequest'
+      responses:
+        '201':
+          description: Created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Deal'
+
+  /v1/workspaces/{workspaceId}/deals/{dealId}:
+    parameters:
+      - $ref: '#/components/parameters/workspaceId'
+      - $ref: '#/components/parameters/dealId'
+    get:
+      summary: Obter negócio
+      operationId: getDeal
+      tags: [Deals]
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Deal'
+    patch:
+      summary: Atualizar negócio
+      operationId: updateDeal
+      tags: [Deals]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateDealRequest'
+      responses:
+        '200':
+          description: OK
+    delete:
+      summary: Deletar negócio
+      operationId: deleteDeal
+      tags: [Deals]
+      responses:
+        '204':
+          description: No Content
+
+  /v1/workspaces/{workspaceId}/deals/{dealId}/:move:
+    parameters:
+      - $ref: '#/components/parameters/workspaceId'
+      - $ref: '#/components/parameters/dealId'
+    post:
+      summary: Atualizar estágio do negócio
+      operationId: moveDeal
+      tags: [Deals]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateDealStageRequest'
+      responses:
+        '200':
+          description: OK
+
+  /v1/workspaces/{workspaceId}/timeline:
+    parameters:
+      - $ref: '#/components/parameters/workspaceId'
+    get:
+      summary: Listar timeline de atividades
+      operationId: listTimeline
+      tags: [Timeline]
+      parameters:
+        - name: contactId
+          in: query
+          schema:
+            type: string
+        - name: companyId
+          in: query
+          schema:
+            type: string
+        - name: dealId
+          in: query
+          schema:
+            type: string
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Activity'
+
+  /v1/workspaces/{workspaceId}/timeline/notes:
+    parameters:
+      - $ref: '#/components/parameters/workspaceId'
+    post:
+      summary: Criar nota na timeline
+      operationId: createNote
+      tags: [Timeline]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateNoteRequest'
+      responses:
+        '201':
+          description: Created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Note'
+
+  /v1/workspaces/{workspaceId}/timeline/calls:
+    parameters:
+      - $ref: '#/components/parameters/workspaceId'
+    post:
+      summary: Registrar chamada na timeline
+      operationId: createCall
+      tags: [Timeline]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateCallRequest'
+      responses:
+        '201':
+          description: Created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Call'
+
+  # --- Portfolio Paths ---
+
+  /v1/workspaces/{workspaceId}/portfolio:
+    parameters:
+      - $ref: '#/components/parameters/workspaceId'
+    get:
+      summary: Listar itens do portfólio
+      operationId: listPortfolioItems
+      tags: [Portfolio]
+      parameters:
+        - name: status
+          in: query
+          schema:
+            $ref: '#/components/schemas/PortfolioStatus'
+        - name: category
+          in: query
+          schema:
+            $ref: '#/components/schemas/PortfolioCategory'
+        - name: q
+          in: query
+          schema:
+            type: string
+          description: Busca textual
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PortfolioListResponse'
+    post:
+      summary: Criar item no portfólio
+      operationId: createPortfolioItem
+      tags: [Portfolio]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreatePortfolioItemRequest'
+      responses:
+        '201':
+          description: Created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PortfolioItemResponse'
+
+  /v1/workspaces/{workspaceId}/portfolio/{itemID}:
+    parameters:
+      - $ref: '#/components/parameters/workspaceId'
+      - $ref: '#/components/parameters/portfolioItemId'
+    get:
+      summary: Obter item do portfólio
+      operationId: getPortfolioItem
+      tags: [Portfolio]
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PortfolioItemResponse'
+    patch:
+      summary: Atualizar item do portfólio
+      operationId: updatePortfolioItem
+      tags: [Portfolio]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdatePortfolioItemRequest'
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PortfolioItemResponse'
+    delete:
+      summary: Deletar item do portfólio
+      operationId: deletePortfolioItem
+      tags: [Portfolio]
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok:
+                    type: boolean
+                  deleted:
+                    type: boolean

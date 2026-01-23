@@ -77,15 +77,15 @@ func (s *ActivityService) CreateNote(ctx context.Context, workspaceID, actorID s
 
 	// Create Timeline Activity
 	activity := &domain.Activity{
-		ID:           generateDealID(),
-		WorkspaceID:  workspaceID,
-		CompanyID:    req.CompanyID,
-		ContactID:    req.ContactID,
-		DealID:       req.DealID,
-		Type:         domain.ActivityTypeNote,
-		ActivityID:   &created.ID,
-		UserID:       actorID,
-		CreatedAt:    time.Now(),
+		ID:          generateDealID(),
+		WorkspaceID: workspaceID,
+		CompanyID:   req.CompanyID,
+		ContactID:   req.ContactID,
+		DealID:      req.DealID,
+		Type:        domain.ActivityTypeNote,
+		ActivityID:  &created.ID,
+		UserID:      actorID,
+		CreatedAt:   time.Now(),
 	}
 
 	_, err = s.activityRepo.CreateActivity(ctx, activity)
@@ -129,14 +129,14 @@ func (s *ActivityService) CreateCall(ctx context.Context, workspaceID, actorID s
 
 	// Create Timeline Activity
 	activity := &domain.Activity{
-		ID:           generateDealID(),
-		WorkspaceID:  workspaceID,
-		CompanyID:    req.CompanyID,
-		ContactID:    &req.ContactID,
-		Type:         domain.ActivityTypeCall,
-		ActivityID:   &created.ID,
-		UserID:       actorID,
-		CreatedAt:    time.Now(),
+		ID:          generateDealID(),
+		WorkspaceID: workspaceID,
+		CompanyID:   req.CompanyID,
+		ContactID:   &req.ContactID,
+		Type:        domain.ActivityTypeCall,
+		ActivityID:  &created.ID,
+		UserID:      actorID,
+		CreatedAt:   time.Now(),
 	}
 
 	_, err = s.activityRepo.CreateActivity(ctx, activity)

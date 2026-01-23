@@ -31,8 +31,8 @@ type Config struct {
 	S2STokenMCP string `env:"S2S_TOKEN_MCP"`
 
 	// OpenTelemetry
-	OTELEnabled          bool    `env:"OTEL_ENABLED" envDefault:"true"`
-	OTELExporterEndpoint string  `env:"OTEL_EXPORTER_OTLP_ENDPOINT" envDefault:"localhost:4317"`
+	OTELEnabled          bool    `env:"OTEL_ENABLED" envDefault:"false"`
+	OTELExporterEndpoint string  `env:"OTEL_EXPORTER_OTLP_ENDPOINT"`
 	OTELServiceName      string  `env:"OTEL_SERVICE_NAME" envDefault:"linkko-api-go"`
 	OTELSamplingRatio    float64 `env:"OTEL_SAMPLING_RATIO" envDefault:"0.1"`
 
@@ -131,6 +131,12 @@ func (c *Config) GetAllowedIssuers() []string {
 		}
 	}
 	return result
+}
+
+// TelemetryEnabled returns true only if OTel is explicitly enabled and an endpoint is provided.
+// This prevents accidental outbound traffic and ensures telemetry is strictly opt-in.
+func (c *Config) TelemetryEnabled() bool {
+	return c.OTELEnabled && c.OTELExporterEndpoint != ""
 }
 
 // GetJWTKeys returns a map of JWT keys by issuer and kid

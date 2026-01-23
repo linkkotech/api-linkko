@@ -1,4 +1,4 @@
-.PHONY: help dev migrate cleanup logs test build clean down
+.PHONY: help dev migrate cleanup logs test build clean down openapi-sync
 
 help: ## Show this help message
 	@echo 'Usage: make [target]'
@@ -40,3 +40,6 @@ lint: ## Run linter
 format: ## Format code
 	go fmt ./...
 	goimports -w .
+
+openapi-sync: ## Sync OpenAPI spec for internal embedding
+	cp api/openapi.yaml internal/http/docs/openapi.yaml
