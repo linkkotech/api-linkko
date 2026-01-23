@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"net/http"
+	"strings"
 	"time"
 
 	"linkko-api/internal/auth"
@@ -14,6 +15,8 @@ import (
 	"linkko-api/internal/ratelimit"
 	"linkko-api/internal/repo"
 	"linkko-api/internal/telemetry"
+
+	"github.com/prometheus/client_golang/prometheus/promhttp"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -64,6 +67,7 @@ func buildRouter(deps RouterDeps) chi.Router {
 
 	r.Get("/openapi.yaml", docs.OpenAPIHandler().ServeHTTP)
 	r.Get("/docs", docs.ScalarDocsHandler("/openapi.yaml").ServeHTTP)
+	r.Get("/metrics", metricsMiddleware(deps.Cfg.MetricsToken)(promhttp.Handler()).ServeHTTP)
 
 	r.Get("/ready", func(w http.ResponseWriter, r *http.Request) {
 		if deps.Pool == nil {
@@ -213,4 +217,34 @@ func buildRouter(deps RouterDeps) chi.Router {
 	})
 
 	return r
+}
+
+// metricsMiddleware protege o endpoint de métricas com um token opcional.
+func metricsMiddleware(token string) func(http.Handler) http.Handler {
+	return func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			// Se o token não estiver configurado, permite acesso livre (útil para dev)
+			if token == "" {
+				next.ServeHTTP(w, r)
+				return
+			}
+
+			// Exige o token no header X-Metrics-Token OU Authorization: Bearer <token>
+			requestToken := r.Header.Get("X-Metrics-Token")
+			if requestToken == "" {
+				authHeader := r.Header.Get("Authorization")
+				if strings.HasPrefix(authHeader, "Bearer ") {
+					requestToken = strings.TrimPrefix(authHeader, "Bearer ")
+				}
+			}
+
+			if requestToken != token {
+				w.WriteHeader(http.StatusUnauthorized)
+				_, _ = w.Write([]byte("unauthorized: invalid or missing metrics token"))
+				return
+			}
+
+			next.ServeHTTP(w, r)
+		})
+	}
 }

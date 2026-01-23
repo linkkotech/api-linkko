@@ -30,6 +30,8 @@ tags:
     description: Histórico cronológico de atividades e interações
   - name: Portfolio
     description: Gerenciamento de catálogo de produtos e serviços
+  - name: Ops
+    description: Operações, métricas e monitoramento
   - name: Docs
     description: Documentação técnica da API
 
@@ -1256,6 +1258,19 @@ paths:
           description: OK
         '503':
           description: Service Unavailable
+
+  /metrics:
+    get:
+      summary: Prometheus metrics
+      tags: [Ops]
+      security: []
+      responses:
+        '200':
+          description: OK
+          content:
+            text/plain; version=0.0.4:
+              schema:
+                type: string
 
   /openapi.yaml:
     get:

@@ -44,6 +44,9 @@ type Config struct {
 
 	// Environment
 	AppEnv string `env:"APP_ENV" envDefault:"prod"`
+
+	// Metrics
+	MetricsToken string `env:"METRICS_TOKEN"`
 }
 
 // LoadConfig loads configuration from environment variables
