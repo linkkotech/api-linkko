@@ -87,15 +87,15 @@ SELECT
     "deletedAt",
     "deletedById"
 FROM "Contact"
-WHERE "workspaceId" = $1
+WHERE "workspaceId" = sqlc.arg('workspaceId')
   AND "deletedAt" IS NULL
-  AND ($2::TEXT IS NULL OR "ownerId" = $2)
-  AND ($3::TEXT IS NULL OR "companyId" = $3)
-  AND ($4::TEXT IS NULL OR "lifecycleStage"::TEXT = $4)
-  AND ($5::TEXT IS NULL OR to_tsvector('simple', "fullName" || ' ' || COALESCE("email", '')) @@ plainto_tsquery('simple', $5))
-  AND ($6::TIMESTAMP IS NULL OR "createdAt" < $6)
+  AND (sqlc.narg('ownerId')::TEXT IS NULL OR "ownerId" = sqlc.narg('ownerId'))
+  AND (sqlc.narg('companyId')::TEXT IS NULL OR "companyId" = sqlc.narg('companyId'))
+  AND (sqlc.narg('lifecycleStage')::TEXT IS NULL OR "lifecycleStage"::TEXT = sqlc.narg('lifecycleStage'))
+  AND (sqlc.narg('queryText')::TEXT IS NULL OR to_tsvector('simple', "fullName" || ' ' || COALESCE("email", '')) @@ plainto_tsquery('simple', sqlc.narg('queryText')))
+  AND (sqlc.narg('cursorTime')::TIMESTAMP IS NULL OR "createdAt" < sqlc.narg('cursorTime'))
 ORDER BY "createdAt" DESC
-LIMIT $7;
+LIMIT sqlc.arg('limit');
 
 -- name: CreateContact :one
 -- Cria um novo contato no workspace (ID gerado pela aplicação).

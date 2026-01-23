@@ -121,15 +121,15 @@ func sqlcRowToDomainContact(row interface{}) *domain.Contact {
 // List retrieves contacts for a workspace with cursor-based pagination.
 // Multi-tenant isolation enforced by workspace_id filter.
 func (r *ContactRepository) List(ctx context.Context, params domain.ListContactsParams) ([]domain.Contact, string, error) {
-	// Preparar parâmetros opcionais
-	var ownerID, companyID, lifecycleStage, queryText string
+	// Preparar parâmetros opcionais usando ponteiros para nil quando vazios
+	var ownerID, companyID, queryText *string
 	var cursorTime pgtype.Timestamp
 
-	if params.ActorID != nil {
-		ownerID = *params.ActorID
+	if params.ActorID != nil && *params.ActorID != "" {
+		ownerID = params.ActorID
 	}
-	if params.CompanyID != nil {
-		companyID = *params.CompanyID
+	if params.CompanyID != nil && *params.CompanyID != "" {
+		companyID = params.CompanyID
 	}
 	if params.Cursor != nil && *params.Cursor != "" {
 		t, err := time.Parse(time.RFC3339, *params.Cursor)
@@ -138,19 +138,19 @@ func (r *ContactRepository) List(ctx context.Context, params domain.ListContacts
 		}
 		cursorTime = pgtype.Timestamp{Time: t, Valid: true}
 	}
-	if params.Query != nil {
-		queryText = *params.Query
+	if params.Query != nil && *params.Query != "" {
+		queryText = params.Query
 	}
 
-	// Chamar SQLc query
+	// Chamar SQLc query com campos nomeados semanticamente
 	rows, err := r.queries.ListContacts(ctx, sqlc.ListContactsParams{
-		WorkspaceId: params.WorkspaceID,
-		Column2:     ownerID,
-		Column3:     companyID,
-		Column4:     lifecycleStage,
-		Column5:     queryText,
-		Column6:     cursorTime,
-		Limit:       int32(params.Limit + 1), // +1 para detectar se há próxima página
+		WorkspaceId:    params.WorkspaceID,
+		OwnerId:        ownerID,
+		CompanyId:      companyID,
+		LifecycleStage: nil, // não temos este campo no domain ainda
+		QueryText:      queryText,
+		CursorTime:     cursorTime,
+		Limit:          int32(params.Limit + 1), // +1 para detectar se há próxima página
 	})
 	if err != nil {
 		return nil, "", fmt.Errorf("query contacts: %w", err)

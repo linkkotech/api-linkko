@@ -471,13 +471,13 @@ LIMIT $7
 `
 
 type ListContactsParams struct {
-	WorkspaceId string           `json:"workspaceId"`
-	Column2     string           `json:"column2"`
-	Column3     string           `json:"column3"`
-	Column4     string           `json:"column4"`
-	Column5     string           `json:"column5"`
-	Column6     pgtype.Timestamp `json:"column6"`
-	Limit       int32            `json:"limit"`
+	WorkspaceId    string           `json:"workspaceId"`
+	OwnerId        *string          `json:"ownerId"`
+	CompanyId      *string          `json:"companyId"`
+	LifecycleStage *string          `json:"lifecycleStage"`
+	QueryText      *string          `json:"queryText"`
+	CursorTime     pgtype.Timestamp `json:"cursorTime"`
+	Limit          int32            `json:"limit"`
 }
 
 type ListContactsRow struct {
@@ -522,11 +522,11 @@ type ListContactsRow struct {
 func (q *Queries) ListContacts(ctx context.Context, arg ListContactsParams) ([]ListContactsRow, error) {
 	rows, err := q.db.Query(ctx, listContacts,
 		arg.WorkspaceId,
-		arg.Column2,
-		arg.Column3,
-		arg.Column4,
-		arg.Column5,
-		arg.Column6,
+		arg.OwnerId,
+		arg.CompanyId,
+		arg.LifecycleStage,
+		arg.QueryText,
+		arg.CursorTime,
 		arg.Limit,
 	)
 	if err != nil {
