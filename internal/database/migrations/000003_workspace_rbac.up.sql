@@ -13,10 +13,11 @@
 -- =====================================================
 -- Table: WorkspaceRole
 -- Purpose: Define available roles in a workspace
+-- Schema: id = CUID (Prisma-managed), name = semantic role (Go business contract)
 -- =====================================================
 CREATE TABLE IF NOT EXISTS "WorkspaceRole" (
-    id TEXT PRIMARY KEY,                    -- Canonical role ID (e.g., 'work_admin')
-    name VARCHAR(100) NOT NULL,             -- Display name (e.g., 'Workspace Admin')
+    id TEXT PRIMARY KEY,                    -- CUID from Prisma (e.g., 'clworkspace_admin')
+    name VARCHAR(100) NOT NULL UNIQUE,      -- Semantic role name (e.g., 'work_admin') - Go domain contract
     description TEXT,                       -- Human-readable description
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
@@ -24,12 +25,13 @@ CREATE TABLE IF NOT EXISTS "WorkspaceRole" (
 -- Ensure description column exists (defensive against Prisma-created tables)
 ALTER TABLE "WorkspaceRole" ADD COLUMN IF NOT EXISTS "description" TEXT;
 
--- Insert default workspace roles
+-- Insert default workspace roles with CUID IDs (matching Prisma schema)
+-- CRITICAL: id = CUID (Prisma format), name = semantic role (Go domain.Role)
 INSERT INTO "WorkspaceRole" (id, name, description) VALUES
-    ('work_admin', 'Admin', 'Full access to workspace including member management'),
-    ('work_manager', 'Manager', 'Can create, read, update resources but not manage members'),
-    ('work_user', 'User', 'Can create and read resources but not modify others'' data'),
-    ('work_viewer', 'Viewer', 'Read-only access to workspace resources')
+    ('clworkspace_admin', 'work_admin', 'Full access to workspace including member management'),
+    ('clworkspace_manager', 'work_manager', 'Can create, read, update resources but not manage members'),
+    ('clworkspace_user', 'work_user', 'Can create and read resources but not modify others'' data'),
+    ('clworkspace_viewer', 'work_viewer', 'Read-only access to workspace resources')
 ON CONFLICT (id) DO NOTHING;
 
 -- =====================================================

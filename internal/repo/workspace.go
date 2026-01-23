@@ -47,23 +47,28 @@ func NewWorkspaceRepository(pool *pgxpool.Pool) *WorkspaceRepository {
 // This is the primary authorization check method called by service layers.
 //
 // Returns:
-//   - Role ID (e.g., "work_admin", "work_manager") if member exists
+//   - Role name (e.g., "work_admin", "work_manager") if member exists
 //   - ErrMemberNotFound if user is not a member of the workspace
 //   - Other errors for database failures
 //
-// Performance: Uses indexed lookup on (workspaceId, userId) - ~1-5ms typical query time.
+// Performance: Uses indexed lookup on (workspaceId, userId) with JOIN to WorkspaceRole - ~1-5ms typical query time.
 //
 // Security: This method enforces multi-tenant isolation. A user cannot access
 // resources in a workspace they don't belong to.
+//
+// Implementation Note: WorkspaceRole.id contains CUIDs (e.g., 'clworkspace_admin')
+// while WorkspaceRole.name contains semantic role names (e.g., 'work_admin').
+// This JOIN maps CUID to semantic name for Go domain validation.
 func (r *WorkspaceRepository) GetMemberRole(ctx context.Context, userID string, workspaceID string) (domain.Role, error) {
 	query := `
-		SELECT "workspaceRoleId"
-		FROM "WorkspaceMember"
-		WHERE "userId" = $1 AND "workspaceId" = $2
+		SELECT r.name
+		FROM "WorkspaceMember" m
+		JOIN "WorkspaceRole" r ON m."workspaceRoleId" = r.id
+		WHERE m."userId" = $1 AND m."workspaceId" = $2
 	`
 
-	var roleID string
-	err := r.pool.QueryRow(ctx, query, userID, workspaceID).Scan(&roleID)
+	var roleName string
+	err := r.pool.QueryRow(ctx, query, userID, workspaceID).Scan(&roleName)
 
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
@@ -76,12 +81,12 @@ func (r *WorkspaceRepository) GetMemberRole(ctx context.Context, userID string, 
 	}
 
 	// Convert string to domain.Role type for type safety
-	role := domain.Role(roleID)
+	role := domain.Role(roleName)
 
 	// Validate role is one of the expected values
 	// This protects against data corruption in the database
 	if !role.IsValid() {
-		return "", fmt.Errorf("invalid role '%s' for user %s in workspace %s: %w", roleID, userID, workspaceID, ErrInvalidRole)
+		return "", fmt.Errorf("invalid role '%s' for user %s in workspace %s: %w", roleName, userID, workspaceID, ErrInvalidRole)
 	}
 
 	return role, nil

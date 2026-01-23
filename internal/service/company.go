@@ -6,7 +6,10 @@ import (
 	"fmt"
 
 	"linkko-api/internal/domain"
+	"linkko-api/internal/observability/logger"
 	"linkko-api/internal/repo"
+
+	"go.uber.org/zap"
 )
 
 var (
@@ -18,14 +21,43 @@ type CompanyService struct {
 	companyRepo   *repo.CompanyRepository
 	auditRepo     *repo.AuditRepo
 	workspaceRepo *repo.WorkspaceRepository
+	log           *logger.Logger
 }
 
-func NewCompanyService(companyRepo *repo.CompanyRepository, auditRepo *repo.AuditRepo, workspaceRepo *repo.WorkspaceRepository) *CompanyService {
+func NewCompanyService(companyRepo *repo.CompanyRepository, auditRepo *repo.AuditRepo, workspaceRepo *repo.WorkspaceRepository, log *logger.Logger) *CompanyService {
 	return &CompanyService{
 		companyRepo:   companyRepo,
 		auditRepo:     auditRepo,
 		workspaceRepo: workspaceRepo,
+		log:           log,
 	}
+}
+
+// getMemberRoleWithLogging wraps GetMemberRole with authorization audit logging.
+func (s *CompanyService) getMemberRoleWithLogging(ctx context.Context, actorID, workspaceID string) (domain.Role, error) {
+	role, err := s.workspaceRepo.GetMemberRole(ctx, actorID, workspaceID)
+	if err != nil {
+		s.log.Error(ctx, "failed to get member role",
+			logger.Module("company"),
+			logger.Action("authorization"),
+			zap.String("actor_id", actorID),
+			zap.String("workspace_id", workspaceID),
+			zap.Error(err),
+		)
+		if errors.Is(err, repo.ErrMemberNotFound) {
+			return "", ErrMemberNotFound
+		}
+		return "", fmt.Errorf("get member role: %w", err)
+	}
+
+	s.log.Info(ctx, "workspace access granted",
+		logger.Module("company"),
+		logger.Action("authorization"),
+		zap.String("actor_id", actorID),
+		zap.String("workspace_id", workspaceID),
+		zap.String("role", string(role)),
+	)
+	return role, nil
 }
 
 // ListCompanies retrieves companies with RBAC validation.
@@ -33,12 +65,9 @@ func NewCompanyService(companyRepo *repo.CompanyRepository, auditRepo *repo.Audi
 // Role is fetched from database to enforce real-time authorization.
 func (s *CompanyService) ListCompanies(ctx context.Context, workspaceID, actorID string, params domain.ListCompaniesParams) (*domain.CompanyListResponse, error) {
 	// Fetch user's role in this workspace from database
-	role, err := s.workspaceRepo.GetMemberRole(ctx, actorID, workspaceID)
+	role, err := s.getMemberRoleWithLogging(ctx, actorID, workspaceID)
 	if err != nil {
-		if errors.Is(err, repo.ErrMemberNotFound) {
-			return nil, ErrMemberNotFound
-		}
-		return nil, fmt.Errorf("get member role: %w", err)
+		return nil, err
 	}
 
 	// RBAC: all workspace members (admin, manager, user, viewer) can list companies
@@ -68,12 +97,9 @@ func (s *CompanyService) ListCompanies(ctx context.Context, workspaceID, actorID
 // Role is fetched from database to enforce real-time authorization.
 func (s *CompanyService) GetCompany(ctx context.Context, workspaceID, companyID, actorID string) (*domain.Company, error) {
 	// Fetch user's role in this workspace from database
-	role, err := s.workspaceRepo.GetMemberRole(ctx, actorID, workspaceID)
+	role, err := s.getMemberRoleWithLogging(ctx, actorID, workspaceID)
 	if err != nil {
-		if errors.Is(err, repo.ErrMemberNotFound) {
-			return nil, ErrMemberNotFound
-		}
-		return nil, fmt.Errorf("get member role: %w", err)
+		return nil, err
 	}
 
 	// RBAC: all workspace members can view companies
@@ -94,12 +120,9 @@ func (s *CompanyService) GetCompany(ctx context.Context, workspaceID, companyID,
 // Role is fetched from database to enforce real-time authorization.
 func (s *CompanyService) CreateCompany(ctx context.Context, workspaceID, actorID string, req *domain.CreateCompanyRequest) (*domain.Company, error) {
 	// Fetch user's role in this workspace from database
-	role, err := s.workspaceRepo.GetMemberRole(ctx, actorID, workspaceID)
+	role, err := s.getMemberRoleWithLogging(ctx, actorID, workspaceID)
 	if err != nil {
-		if errors.Is(err, repo.ErrMemberNotFound) {
-			return nil, ErrMemberNotFound
-		}
-		return nil, fmt.Errorf("get member role: %w", err)
+		return nil, err
 	}
 
 	// RBAC: admin, manager, user can create (viewer cannot)
@@ -182,12 +205,9 @@ func (s *CompanyService) CreateCompany(ctx context.Context, workspaceID, actorID
 // Role is fetched from database to enforce real-time authorization.
 func (s *CompanyService) UpdateCompany(ctx context.Context, workspaceID, companyID, actorID string, req *domain.UpdateCompanyRequest) (*domain.Company, error) {
 	// Fetch user's role in this workspace from database
-	role, err := s.workspaceRepo.GetMemberRole(ctx, actorID, workspaceID)
+	role, err := s.getMemberRoleWithLogging(ctx, actorID, workspaceID)
 	if err != nil {
-		if errors.Is(err, repo.ErrMemberNotFound) {
-			return nil, ErrMemberNotFound
-		}
-		return nil, fmt.Errorf("get member role: %w", err)
+		return nil, err
 	}
 
 	// RBAC: admin, manager, user can update (viewer cannot)
@@ -237,12 +257,9 @@ func (s *CompanyService) UpdateCompany(ctx context.Context, workspaceID, company
 // Role is fetched from database to enforce real-time authorization.
 func (s *CompanyService) DeleteCompany(ctx context.Context, workspaceID, companyID, actorID string) error {
 	// Fetch user's role in this workspace from database
-	role, err := s.workspaceRepo.GetMemberRole(ctx, actorID, workspaceID)
+	role, err := s.getMemberRoleWithLogging(ctx, actorID, workspaceID)
 	if err != nil {
-		if errors.Is(err, repo.ErrMemberNotFound) {
-			return ErrMemberNotFound
-		}
-		return fmt.Errorf("get member role: %w", err)
+		return err
 	}
 
 	// RBAC: only admin and manager can delete

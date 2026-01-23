@@ -8,28 +8,57 @@ import (
 	"strings"
 
 	"linkko-api/internal/domain"
+	"linkko-api/internal/observability/logger"
 	"linkko-api/internal/repo"
+
+	"go.uber.org/zap"
 )
 
 type PortfolioService struct {
 	portfolioRepo *repo.PortfolioRepository
 	workspaceRepo *repo.WorkspaceRepository
 	auditRepo     *repo.AuditRepo
+	log           *logger.Logger
 }
 
-func NewPortfolioService(portfolioRepo *repo.PortfolioRepository, workspaceRepo *repo.WorkspaceRepository, auditRepo *repo.AuditRepo) *PortfolioService {
+func NewPortfolioService(portfolioRepo *repo.PortfolioRepository, workspaceRepo *repo.WorkspaceRepository, auditRepo *repo.AuditRepo, log *logger.Logger) *PortfolioService {
 	return &PortfolioService{
 		portfolioRepo: portfolioRepo,
 		workspaceRepo: workspaceRepo,
 		auditRepo:     auditRepo,
+		log:           log,
 	}
+}
+
+// getMemberRoleWithLogging wraps GetMemberRole with authorization audit logging.
+func (s *PortfolioService) getMemberRoleWithLogging(ctx context.Context, actorID, workspaceID string) (domain.Role, error) {
+	role, err := s.workspaceRepo.GetMemberRole(ctx, actorID, workspaceID)
+	if err != nil {
+		s.log.Error(ctx, "failed to get member role",
+			logger.Module("portfolio"),
+			logger.Action("authorization"),
+			zap.String("actor_id", actorID),
+			zap.String("workspace_id", workspaceID),
+			zap.Error(err),
+		)
+		return "", fmt.Errorf("get member role: %w", err)
+	}
+
+	s.log.Info(ctx, "workspace access granted",
+		logger.Module("portfolio"),
+		logger.Action("authorization"),
+		zap.String("actor_id", actorID),
+		zap.String("workspace_id", workspaceID),
+		zap.String("role", string(role)),
+	)
+	return role, nil
 }
 
 func (s *PortfolioService) CreatePortfolioItem(ctx context.Context, workspaceID, actorID string, req *domain.CreatePortfolioItemRequest) (*domain.PortfolioItem, error) {
 	// RBAC
-	role, err := s.workspaceRepo.GetMemberRole(ctx, actorID, workspaceID)
+	role, err := s.getMemberRoleWithLogging(ctx, actorID, workspaceID)
 	if err != nil {
-		return nil, fmt.Errorf("get member role: %w", err)
+		return nil, err
 	}
 	if !domain.CanModifyContacts(role) { // Using same permission level as Contacts for now
 		return nil, ErrUnauthorized
@@ -80,7 +109,7 @@ func (s *PortfolioService) CreatePortfolioItem(ctx context.Context, workspaceID,
 }
 
 func (s *PortfolioService) GetPortfolioItem(ctx context.Context, workspaceID, itemID, actorID string) (*domain.PortfolioItem, error) {
-	role, err := s.workspaceRepo.GetMemberRole(ctx, actorID, workspaceID)
+	role, err := s.getMemberRoleWithLogging(ctx, actorID, workspaceID)
 	if err != nil {
 		return nil, err
 	}
@@ -92,7 +121,7 @@ func (s *PortfolioService) GetPortfolioItem(ctx context.Context, workspaceID, it
 }
 
 func (s *PortfolioService) ListPortfolioItems(ctx context.Context, workspaceID, actorID string, status *domain.PortfolioStatus, category *domain.PortfolioCategoryEnum, query *string) ([]domain.PortfolioItem, error) {
-	role, err := s.workspaceRepo.GetMemberRole(ctx, actorID, workspaceID)
+	role, err := s.getMemberRoleWithLogging(ctx, actorID, workspaceID)
 	if err != nil {
 		return nil, err
 	}
@@ -104,7 +133,7 @@ func (s *PortfolioService) ListPortfolioItems(ctx context.Context, workspaceID, 
 }
 
 func (s *PortfolioService) UpdatePortfolioItem(ctx context.Context, workspaceID, itemID, actorID string, req *domain.UpdatePortfolioItemRequest) (*domain.PortfolioItem, error) {
-	role, err := s.workspaceRepo.GetMemberRole(ctx, actorID, workspaceID)
+	role, err := s.getMemberRoleWithLogging(ctx, actorID, workspaceID)
 	if err != nil {
 		return nil, err
 	}
@@ -128,7 +157,7 @@ func (s *PortfolioService) UpdatePortfolioItem(ctx context.Context, workspaceID,
 }
 
 func (s *PortfolioService) DeletePortfolioItem(ctx context.Context, workspaceID, itemID, actorID string) error {
-	role, err := s.workspaceRepo.GetMemberRole(ctx, actorID, workspaceID)
+	role, err := s.getMemberRoleWithLogging(ctx, actorID, workspaceID)
 	if err != nil {
 		return err
 	}

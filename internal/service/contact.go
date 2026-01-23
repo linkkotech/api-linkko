@@ -9,7 +9,10 @@ import (
 	"strings"
 
 	"linkko-api/internal/domain"
+	"linkko-api/internal/observability/logger"
 	"linkko-api/internal/repo"
+
+	"go.uber.org/zap"
 )
 
 var (
@@ -27,14 +30,16 @@ type ContactService struct {
 	auditRepo     *repo.AuditRepo
 	workspaceRepo *repo.WorkspaceRepository
 	companyRepo   *repo.CompanyRepository // For CompanyID validation
+	log           *logger.Logger
 }
 
-func NewContactService(contactRepo *repo.ContactRepository, auditRepo *repo.AuditRepo, workspaceRepo *repo.WorkspaceRepository, companyRepo *repo.CompanyRepository) *ContactService {
+func NewContactService(contactRepo *repo.ContactRepository, auditRepo *repo.AuditRepo, workspaceRepo *repo.WorkspaceRepository, companyRepo *repo.CompanyRepository, log *logger.Logger) *ContactService {
 	return &ContactService{
 		contactRepo:   contactRepo,
 		auditRepo:     auditRepo,
 		workspaceRepo: workspaceRepo,
 		companyRepo:   companyRepo,
+		log:           log,
 	}
 }
 
@@ -45,18 +50,42 @@ func generateID() string {
 	return "c" + strings.ToLower(base32.StdEncoding.EncodeToString(b)[:24])
 }
 
+// getMemberRoleWithLogging wraps GetMemberRole with authorization audit logging.
+// Logs successful role resolution and authorization failures for security monitoring.
+func (s *ContactService) getMemberRoleWithLogging(ctx context.Context, actorID, workspaceID string) (domain.Role, error) {
+	role, err := s.workspaceRepo.GetMemberRole(ctx, actorID, workspaceID)
+	if err != nil {
+		s.log.Error(ctx, "failed to get member role",
+			logger.Module("contact"),
+			logger.Action("authorization"),
+			zap.String("actor_id", actorID),
+			zap.String("workspace_id", workspaceID),
+			zap.Error(err),
+		)
+		if errors.Is(err, repo.ErrMemberNotFound) {
+			return "", ErrMemberNotFound
+		}
+		return "", fmt.Errorf("get member role: %w", err)
+	}
+
+	s.log.Info(ctx, "workspace access granted",
+		logger.Module("contact"),
+		logger.Action("authorization"),
+		zap.String("actor_id", actorID),
+		zap.String("workspace_id", workspaceID),
+		zap.String("role", string(role)),
+	)
+	return role, nil
+}
+
 // ListContacts retrieves contacts with RBAC validation.
 // Permission: all workspace members can list contacts.
 // Role is fetched from database to enforce real-time authorization.
 func (s *ContactService) ListContacts(ctx context.Context, workspaceID, actorID string, params domain.ListContactsParams) (*domain.ContactListResponse, error) {
 	// Fetch user's role in this workspace from database
-	role, err := s.workspaceRepo.GetMemberRole(ctx, actorID, workspaceID)
+	role, err := s.getMemberRoleWithLogging(ctx, actorID, workspaceID)
 	if err != nil {
-		if errors.Is(err, repo.ErrMemberNotFound) {
-			// User is not a member of this workspace - return 403
-			return nil, ErrMemberNotFound
-		}
-		return nil, fmt.Errorf("get member role: %w", err)
+		return nil, err
 	}
 
 	// RBAC: all workspace members (admin, manager, user, viewer) can list contacts
@@ -87,12 +116,9 @@ func (s *ContactService) ListContacts(ctx context.Context, workspaceID, actorID 
 // Role is fetched from database to enforce real-time authorization.
 func (s *ContactService) GetContact(ctx context.Context, workspaceID, contactID, actorID string) (*domain.Contact, error) {
 	// Fetch user's role in this workspace from database
-	role, err := s.workspaceRepo.GetMemberRole(ctx, actorID, workspaceID)
+	role, err := s.getMemberRoleWithLogging(ctx, actorID, workspaceID)
 	if err != nil {
-		if errors.Is(err, repo.ErrMemberNotFound) {
-			return nil, ErrMemberNotFound
-		}
-		return nil, fmt.Errorf("get member role: %w", err)
+		return nil, err
 	}
 
 	// RBAC: all workspace members can view contacts
@@ -114,12 +140,9 @@ func (s *ContactService) GetContact(ctx context.Context, workspaceID, contactID,
 // Role is fetched from database to enforce real-time authorization.
 func (s *ContactService) CreateContact(ctx context.Context, workspaceID, actorID string, req *domain.CreateContactRequest) (*domain.Contact, error) {
 	// Fetch user's role in this workspace from database
-	role, err := s.workspaceRepo.GetMemberRole(ctx, actorID, workspaceID)
+	role, err := s.getMemberRoleWithLogging(ctx, actorID, workspaceID)
 	if err != nil {
-		if errors.Is(err, repo.ErrMemberNotFound) {
-			return nil, ErrMemberNotFound
-		}
-		return nil, fmt.Errorf("get member role: %w", err)
+		return nil, err
 	}
 
 	// RBAC: admin, manager, user can create (viewer cannot)
@@ -204,12 +227,9 @@ func (s *ContactService) CreateContact(ctx context.Context, workspaceID, actorID
 // Role is fetched from database to enforce real-time authorization.
 func (s *ContactService) UpdateContact(ctx context.Context, workspaceID, contactID, actorID string, req *domain.UpdateContactRequest) (*domain.Contact, error) {
 	// Fetch user's role in this workspace from database
-	role, err := s.workspaceRepo.GetMemberRole(ctx, actorID, workspaceID)
+	role, err := s.getMemberRoleWithLogging(ctx, actorID, workspaceID)
 	if err != nil {
-		if errors.Is(err, repo.ErrMemberNotFound) {
-			return nil, ErrMemberNotFound
-		}
-		return nil, fmt.Errorf("get member role: %w", err)
+		return nil, err
 	}
 
 	// RBAC: admin, manager, user can update (viewer cannot)
@@ -273,12 +293,9 @@ func (s *ContactService) UpdateContact(ctx context.Context, workspaceID, contact
 // Role is fetched from database to enforce real-time authorization.
 func (s *ContactService) DeleteContact(ctx context.Context, workspaceID, contactID, actorID string) error {
 	// Fetch user's role in this workspace from database
-	role, err := s.workspaceRepo.GetMemberRole(ctx, actorID, workspaceID)
+	role, err := s.getMemberRoleWithLogging(ctx, actorID, workspaceID)
 	if err != nil {
-		if errors.Is(err, repo.ErrMemberNotFound) {
-			return ErrMemberNotFound
-		}
-		return fmt.Errorf("get member role: %w", err)
+		return err
 	}
 
 	// RBAC: only admin and manager can delete

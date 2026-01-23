@@ -7,7 +7,10 @@ import (
 	"math"
 
 	"linkko-api/internal/domain"
+	"linkko-api/internal/observability/logger"
 	"linkko-api/internal/repo"
+
+	"go.uber.org/zap"
 )
 
 var (
@@ -30,26 +33,52 @@ type TaskService struct {
 	taskRepo      *repo.TaskRepository
 	auditRepo     *repo.AuditRepo
 	workspaceRepo *repo.WorkspaceRepository
+	log           *logger.Logger
 }
 
-func NewTaskService(taskRepo *repo.TaskRepository, auditRepo *repo.AuditRepo, workspaceRepo *repo.WorkspaceRepository) *TaskService {
+func NewTaskService(taskRepo *repo.TaskRepository, auditRepo *repo.AuditRepo, workspaceRepo *repo.WorkspaceRepository, log *logger.Logger) *TaskService {
 	return &TaskService{
 		taskRepo:      taskRepo,
 		auditRepo:     auditRepo,
 		workspaceRepo: workspaceRepo,
+		log:           log,
 	}
+}
+
+// getMemberRoleWithLogging wraps GetMemberRole with authorization audit logging.
+func (s *TaskService) getMemberRoleWithLogging(ctx context.Context, actorID, workspaceID string) (domain.Role, error) {
+	role, err := s.workspaceRepo.GetMemberRole(ctx, actorID, workspaceID)
+	if err != nil {
+		s.log.Error(ctx, "failed to get member role",
+			logger.Module("task"),
+			logger.Action("authorization"),
+			zap.String("actor_id", actorID),
+			zap.String("workspace_id", workspaceID),
+			zap.Error(err),
+		)
+		if errors.Is(err, repo.ErrMemberNotFound) {
+			return "", ErrMemberNotFound
+		}
+		return "", fmt.Errorf("get member role: %w", err)
+	}
+
+	s.log.Info(ctx, "workspace access granted",
+		logger.Module("task"),
+		logger.Action("authorization"),
+		zap.String("actor_id", actorID),
+		zap.String("workspace_id", workspaceID),
+		zap.String("role", string(role)),
+	)
+	return role, nil
 }
 
 // ListTasks retrieves tasks with RBAC validation.
 // Permission: all workspace members can list tasks.
 func (s *TaskService) ListTasks(ctx context.Context, workspaceID, actorID string, params domain.ListTasksParams) (*domain.TaskListResponse, error) {
 	// Fetch user's role in this workspace from database
-	role, err := s.workspaceRepo.GetMemberRole(ctx, actorID, workspaceID)
+	role, err := s.getMemberRoleWithLogging(ctx, actorID, workspaceID)
 	if err != nil {
-		if errors.Is(err, repo.ErrMemberNotFound) {
-			return nil, ErrMemberNotFound
-		}
-		return nil, fmt.Errorf("get member role: %w", err)
+		return nil, err
 	}
 
 	// RBAC: all workspace members can list tasks
@@ -79,12 +108,9 @@ func (s *TaskService) ListTasks(ctx context.Context, workspaceID, actorID string
 // Permission: all workspace members can view tasks.
 func (s *TaskService) GetTask(ctx context.Context, workspaceID, taskID, actorID string) (*domain.Task, error) {
 	// Fetch user's role in this workspace from database
-	role, err := s.workspaceRepo.GetMemberRole(ctx, actorID, workspaceID)
+	role, err := s.getMemberRoleWithLogging(ctx, actorID, workspaceID)
 	if err != nil {
-		if errors.Is(err, repo.ErrMemberNotFound) {
-			return nil, ErrMemberNotFound
-		}
-		return nil, fmt.Errorf("get member role: %w", err)
+		return nil, err
 	}
 
 	// RBAC: all workspace members can view tasks
@@ -104,12 +130,9 @@ func (s *TaskService) GetTask(ctx context.Context, workspaceID, taskID, actorID 
 // Permission: work_admin, work_manager, work_user can create tasks.
 func (s *TaskService) CreateTask(ctx context.Context, workspaceID, actorID string, req *domain.CreateTaskRequest) (*domain.Task, error) {
 	// Fetch user's role in this workspace from database
-	role, err := s.workspaceRepo.GetMemberRole(ctx, actorID, workspaceID)
+	role, err := s.getMemberRoleWithLogging(ctx, actorID, workspaceID)
 	if err != nil {
-		if errors.Is(err, repo.ErrMemberNotFound) {
-			return nil, ErrMemberNotFound
-		}
-		return nil, fmt.Errorf("get member role: %w", err)
+		return nil, err
 	}
 
 	// RBAC: admin, manager, user can create tasks (viewer cannot)
@@ -184,12 +207,9 @@ func (s *TaskService) CreateTask(ctx context.Context, workspaceID, actorID strin
 // Para mover task (drag-and-drop), usar MoveTask.
 func (s *TaskService) UpdateTask(ctx context.Context, workspaceID, taskID, actorID string, req *domain.UpdateTaskRequest) (*domain.Task, error) {
 	// Fetch user's role in this workspace from database
-	role, err := s.workspaceRepo.GetMemberRole(ctx, actorID, workspaceID)
+	role, err := s.getMemberRoleWithLogging(ctx, actorID, workspaceID)
 	if err != nil {
-		if errors.Is(err, repo.ErrMemberNotFound) {
-			return nil, ErrMemberNotFound
-		}
-		return nil, fmt.Errorf("get member role: %w", err)
+		return nil, err
 	}
 
 	// RBAC: admin, manager, user can update tasks
@@ -239,12 +259,9 @@ func (s *TaskService) UpdateTask(ctx context.Context, workspaceID, taskID, actor
 // Permission: work_admin, work_manager can delete tasks.
 func (s *TaskService) DeleteTask(ctx context.Context, workspaceID, taskID, actorID string) error {
 	// Fetch user's role in this workspace from database
-	role, err := s.workspaceRepo.GetMemberRole(ctx, actorID, workspaceID)
+	role, err := s.getMemberRoleWithLogging(ctx, actorID, workspaceID)
 	if err != nil {
-		if errors.Is(err, repo.ErrMemberNotFound) {
-			return ErrMemberNotFound
-		}
-		return fmt.Errorf("get member role: %w", err)
+		return err
 	}
 
 	// RBAC: admin, manager can delete tasks (user and viewer cannot)
@@ -302,12 +319,9 @@ func (s *TaskService) DeleteTask(ctx context.Context, workspaceID, taskID, actor
 // 7. Commit transaction
 func (s *TaskService) MoveTask(ctx context.Context, workspaceID, taskID, actorID string, req *domain.MoveTaskRequest) (*domain.Task, error) {
 	// Fetch user's role in this workspace from database
-	role, err := s.workspaceRepo.GetMemberRole(ctx, actorID, workspaceID)
+	role, err := s.getMemberRoleWithLogging(ctx, actorID, workspaceID)
 	if err != nil {
-		if errors.Is(err, repo.ErrMemberNotFound) {
-			return nil, ErrMemberNotFound
-		}
-		return nil, fmt.Errorf("get member role: %w", err)
+		return nil, err
 	}
 
 	// RBAC: admin, manager, user can move tasks

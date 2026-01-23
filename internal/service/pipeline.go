@@ -6,7 +6,10 @@ import (
 	"fmt"
 
 	"linkko-api/internal/domain"
+	"linkko-api/internal/observability/logger"
 	"linkko-api/internal/repo"
+
+	"go.uber.org/zap"
 )
 
 var (
@@ -22,26 +25,52 @@ type PipelineService struct {
 	pipelineRepo  *repo.PipelineRepository
 	auditRepo     *repo.AuditRepo
 	workspaceRepo *repo.WorkspaceRepository
+	log           *logger.Logger
 }
 
-func NewPipelineService(pipelineRepo *repo.PipelineRepository, auditRepo *repo.AuditRepo, workspaceRepo *repo.WorkspaceRepository) *PipelineService {
+func NewPipelineService(pipelineRepo *repo.PipelineRepository, auditRepo *repo.AuditRepo, workspaceRepo *repo.WorkspaceRepository, log *logger.Logger) *PipelineService {
 	return &PipelineService{
 		pipelineRepo:  pipelineRepo,
 		auditRepo:     auditRepo,
 		workspaceRepo: workspaceRepo,
+		log:           log,
 	}
+}
+
+// getMemberRoleWithLogging wraps GetMemberRole with authorization audit logging.
+func (s *PipelineService) getMemberRoleWithLogging(ctx context.Context, actorID, workspaceID string) (domain.Role, error) {
+	role, err := s.workspaceRepo.GetMemberRole(ctx, actorID, workspaceID)
+	if err != nil {
+		s.log.Error(ctx, "failed to get member role",
+			logger.Module("pipeline"),
+			logger.Action("authorization"),
+			zap.String("actor_id", actorID),
+			zap.String("workspace_id", workspaceID),
+			zap.Error(err),
+		)
+		if errors.Is(err, repo.ErrMemberNotFound) {
+			return "", ErrMemberNotFound
+		}
+		return "", fmt.Errorf("get member role: %w", err)
+	}
+
+	s.log.Info(ctx, "workspace access granted",
+		logger.Module("pipeline"),
+		logger.Action("authorization"),
+		zap.String("actor_id", actorID),
+		zap.String("workspace_id", workspaceID),
+		zap.String("role", string(role)),
+	)
+	return role, nil
 }
 
 // ListPipelines retrieves pipelines with optional stages.
 // Permission: all workspace members can list pipelines.
 func (s *PipelineService) ListPipelines(ctx context.Context, workspaceID, actorID string, params domain.ListPipelinesParams) (*domain.PipelineListResponse, error) {
 	// Fetch user's role in this workspace from database
-	role, err := s.workspaceRepo.GetMemberRole(ctx, actorID, workspaceID)
+	role, err := s.getMemberRoleWithLogging(ctx, actorID, workspaceID)
 	if err != nil {
-		if errors.Is(err, repo.ErrMemberNotFound) {
-			return nil, ErrMemberNotFound
-		}
-		return nil, fmt.Errorf("get member role: %w", err)
+		return nil, err
 	}
 
 	// RBAC: all workspace members can list pipelines
@@ -70,12 +99,9 @@ func (s *PipelineService) ListPipelines(ctx context.Context, workspaceID, actorI
 // Permission: all workspace members can view pipelines.
 func (s *PipelineService) GetPipeline(ctx context.Context, workspaceID, pipelineID, actorID string) (*domain.Pipeline, error) {
 	// Fetch user's role in this workspace from database
-	role, err := s.workspaceRepo.GetMemberRole(ctx, actorID, workspaceID)
+	role, err := s.getMemberRoleWithLogging(ctx, actorID, workspaceID)
 	if err != nil {
-		if errors.Is(err, repo.ErrMemberNotFound) {
-			return nil, ErrMemberNotFound
-		}
-		return nil, fmt.Errorf("get member role: %w", err)
+		return nil, err
 	}
 
 	// RBAC: all workspace members can view pipelines
@@ -96,12 +122,9 @@ func (s *PipelineService) GetPipeline(ctx context.Context, workspaceID, pipeline
 // If isDefault is true, sets this pipeline as the workspace default (transaction).
 func (s *PipelineService) CreatePipeline(ctx context.Context, workspaceID, actorID string, req *domain.CreatePipelineRequest) (*domain.Pipeline, error) {
 	// Fetch user's role in this workspace from database
-	role, err := s.workspaceRepo.GetMemberRole(ctx, actorID, workspaceID)
+	role, err := s.getMemberRoleWithLogging(ctx, actorID, workspaceID)
 	if err != nil {
-		if errors.Is(err, repo.ErrMemberNotFound) {
-			return nil, ErrMemberNotFound
-		}
-		return nil, fmt.Errorf("get member role: %w", err)
+		return nil, err
 	}
 
 	// RBAC: only admin and manager can create pipelines
@@ -192,12 +215,9 @@ func (s *PipelineService) CreatePipeline(ctx context.Context, workspaceID, actor
 // Permission: only admin and manager can create pipelines.
 func (s *PipelineService) CreatePipelineWithStages(ctx context.Context, workspaceID, actorID string, req *domain.CreatePipelineWithStagesRequest) (*domain.Pipeline, error) {
 	// Fetch user's role in this workspace from database
-	role, err := s.workspaceRepo.GetMemberRole(ctx, actorID, workspaceID)
+	role, err := s.getMemberRoleWithLogging(ctx, actorID, workspaceID)
 	if err != nil {
-		if errors.Is(err, repo.ErrMemberNotFound) {
-			return nil, ErrMemberNotFound
-		}
-		return nil, fmt.Errorf("get member role: %w", err)
+		return nil, err
 	}
 
 	// RBAC: only admin and manager can create pipelines
@@ -320,12 +340,9 @@ func (s *PipelineService) CreatePipelineWithStages(ctx context.Context, workspac
 // If isDefault changes to true, uses SetAsDefault transaction.
 func (s *PipelineService) UpdatePipeline(ctx context.Context, workspaceID, pipelineID, actorID string, req *domain.UpdatePipelineRequest) (*domain.Pipeline, error) {
 	// Fetch user's role in this workspace from database
-	role, err := s.workspaceRepo.GetMemberRole(ctx, actorID, workspaceID)
+	role, err := s.getMemberRoleWithLogging(ctx, actorID, workspaceID)
 	if err != nil {
-		if errors.Is(err, repo.ErrMemberNotFound) {
-			return nil, ErrMemberNotFound
-		}
-		return nil, fmt.Errorf("get member role: %w", err)
+		return nil, err
 	}
 
 	// RBAC: only admin and manager can update pipelines
@@ -403,12 +420,9 @@ func (s *PipelineService) UpdatePipeline(ctx context.Context, workspaceID, pipel
 // Cannot delete default pipeline (must set another as default first).
 func (s *PipelineService) DeletePipeline(ctx context.Context, workspaceID, pipelineID, actorID string) error {
 	// Fetch user's role in this workspace from database
-	role, err := s.workspaceRepo.GetMemberRole(ctx, actorID, workspaceID)
+	role, err := s.getMemberRoleWithLogging(ctx, actorID, workspaceID)
 	if err != nil {
-		if errors.Is(err, repo.ErrMemberNotFound) {
-			return ErrMemberNotFound
-		}
-		return fmt.Errorf("get member role: %w", err)
+		return err
 	}
 
 	// RBAC: only admin and manager can delete pipelines
@@ -457,12 +471,9 @@ func (s *PipelineService) DeletePipeline(ctx context.Context, workspaceID, pipel
 // Permission: all workspace members can list stages.
 func (s *PipelineService) ListStages(ctx context.Context, workspaceID, pipelineID, actorID string) ([]domain.PipelineStage, error) {
 	// Fetch user's role in this workspace from database
-	role, err := s.workspaceRepo.GetMemberRole(ctx, actorID, workspaceID)
+	role, err := s.getMemberRoleWithLogging(ctx, actorID, workspaceID)
 	if err != nil {
-		if errors.Is(err, repo.ErrMemberNotFound) {
-			return nil, ErrMemberNotFound
-		}
-		return nil, fmt.Errorf("get member role: %w", err)
+		return nil, err
 	}
 
 	// RBAC: all workspace members can list stages
@@ -489,12 +500,9 @@ func (s *PipelineService) ListStages(ctx context.Context, workspaceID, pipelineI
 // Auto-assigns orderIndex as max+1.
 func (s *PipelineService) CreateStage(ctx context.Context, workspaceID, pipelineID, actorID string, req *domain.CreateStageRequest) (*domain.PipelineStage, error) {
 	// Fetch user's role in this workspace from database
-	role, err := s.workspaceRepo.GetMemberRole(ctx, actorID, workspaceID)
+	role, err := s.getMemberRoleWithLogging(ctx, actorID, workspaceID)
 	if err != nil {
-		if errors.Is(err, repo.ErrMemberNotFound) {
-			return nil, ErrMemberNotFound
-		}
-		return nil, fmt.Errorf("get member role: %w", err)
+		return nil, err
 	}
 
 	// RBAC: only admin and manager can create stages
@@ -568,12 +576,9 @@ func (s *PipelineService) CreateStage(ctx context.Context, workspaceID, pipeline
 // Permission: only admin and manager can update stages.
 func (s *PipelineService) UpdateStage(ctx context.Context, workspaceID, stageID, actorID string, req *domain.UpdateStageRequest) (*domain.PipelineStage, error) {
 	// Fetch user's role in this workspace from database
-	role, err := s.workspaceRepo.GetMemberRole(ctx, actorID, workspaceID)
+	role, err := s.getMemberRoleWithLogging(ctx, actorID, workspaceID)
 	if err != nil {
-		if errors.Is(err, repo.ErrMemberNotFound) {
-			return nil, ErrMemberNotFound
-		}
-		return nil, fmt.Errorf("get member role: %w", err)
+		return nil, err
 	}
 
 	// RBAC: only admin and manager can update stages
@@ -627,12 +632,9 @@ func (s *PipelineService) UpdateStage(ctx context.Context, workspaceID, stageID,
 // Permission: only admin and manager can delete stages.
 func (s *PipelineService) DeleteStage(ctx context.Context, workspaceID, stageID, actorID string) error {
 	// Fetch user's role in this workspace from database
-	role, err := s.workspaceRepo.GetMemberRole(ctx, actorID, workspaceID)
+	role, err := s.getMemberRoleWithLogging(ctx, actorID, workspaceID)
 	if err != nil {
-		if errors.Is(err, repo.ErrMemberNotFound) {
-			return ErrMemberNotFound
-		}
-		return fmt.Errorf("get member role: %w", err)
+		return err
 	}
 
 	// RBAC: only admin and manager can delete stages
@@ -792,12 +794,9 @@ func (s *PipelineService) CreateDefaultPipeline(ctx context.Context, workspaceID
 // Permission: only admin can seed default pipeline.
 func (s *PipelineService) SeedDefaultPipeline(ctx context.Context, workspaceID, actorID string) (*domain.Pipeline, error) {
 	// Fetch user's role in this workspace from database
-	role, err := s.workspaceRepo.GetMemberRole(ctx, actorID, workspaceID)
+	role, err := s.getMemberRoleWithLogging(ctx, actorID, workspaceID)
 	if err != nil {
-		if errors.Is(err, repo.ErrMemberNotFound) {
-			return nil, ErrMemberNotFound
-		}
-		return nil, fmt.Errorf("get member role: %w", err)
+		return nil, err
 	}
 
 	// RBAC: only admin can seed default pipeline

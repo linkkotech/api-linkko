@@ -5,25 +5,54 @@ import (
 	"time"
 
 	"linkko-api/internal/domain"
+	"linkko-api/internal/observability/logger"
 	"linkko-api/internal/repo"
+
+	"go.uber.org/zap"
 )
 
 type ActivityService struct {
 	activityRepo  *repo.ActivityRepository
 	workspaceRepo *repo.WorkspaceRepository
 	auditRepo     *repo.AuditRepo
+	log           *logger.Logger
 }
 
-func NewActivityService(activityRepo *repo.ActivityRepository, workspaceRepo *repo.WorkspaceRepository, auditRepo *repo.AuditRepo) *ActivityService {
+func NewActivityService(activityRepo *repo.ActivityRepository, workspaceRepo *repo.WorkspaceRepository, auditRepo *repo.AuditRepo, log *logger.Logger) *ActivityService {
 	return &ActivityService{
 		activityRepo:  activityRepo,
 		workspaceRepo: workspaceRepo,
 		auditRepo:     auditRepo,
+		log:           log,
 	}
 }
 
-func (s *ActivityService) CreateNote(ctx context.Context, workspaceID, actorID string, req *domain.CreateNoteRequest) (*domain.Note, error) {
+// getMemberRoleWithLogging wraps GetMemberRole with authorization audit logging.
+func (s *ActivityService) getMemberRoleWithLogging(ctx context.Context, actorID, workspaceID string) (domain.Role, error) {
 	role, err := s.workspaceRepo.GetMemberRole(ctx, actorID, workspaceID)
+	if err != nil {
+		s.log.Error(ctx, "failed to get member role",
+			logger.Module("activity"),
+			logger.Action("authorization"),
+			zap.String("actor_id", actorID),
+			zap.String("workspace_id", workspaceID),
+			zap.Error(err),
+		)
+		return "", err
+	}
+
+	s.log.Info(ctx, "workspace access granted",
+		logger.Module("activity"),
+		logger.Action("authorization"),
+		zap.String("actor_id", actorID),
+		zap.String("workspace_id", workspaceID),
+		zap.String("role", string(role)),
+	)
+	return role, nil
+}
+
+func (s *ActivityService) CreateNote(ctx context.Context, workspaceID, actorID string, req *domain.CreateNoteRequest) (*domain.Note, error) {
+	role, err := s.getMemberRoleWithLogging(ctx, actorID, workspaceID)
 	if err != nil {
 		return nil, err
 	}
@@ -68,7 +97,7 @@ func (s *ActivityService) CreateNote(ctx context.Context, workspaceID, actorID s
 }
 
 func (s *ActivityService) CreateCall(ctx context.Context, workspaceID, actorID string, req *domain.CreateCallRequest) (*domain.Call, error) {
-	role, err := s.workspaceRepo.GetMemberRole(ctx, actorID, workspaceID)
+	role, err := s.getMemberRoleWithLogging(ctx, actorID, workspaceID)
 	if err != nil {
 		return nil, err
 	}
@@ -119,7 +148,7 @@ func (s *ActivityService) CreateCall(ctx context.Context, workspaceID, actorID s
 }
 
 func (s *ActivityService) ListTimeline(ctx context.Context, workspaceID, actorID string, contactID, companyID, dealID *string) ([]domain.Activity, error) {
-	role, err := s.workspaceRepo.GetMemberRole(ctx, actorID, workspaceID)
+	role, err := s.getMemberRoleWithLogging(ctx, actorID, workspaceID)
 	if err != nil {
 		return nil, err
 	}

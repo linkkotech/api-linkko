@@ -231,13 +231,13 @@ func runServe(cmd *cobra.Command, args []string) error {
 	portfolioRepo := repo.NewPortfolioRepository(pool)
 
 	// Initialize services
-	contactService := service.NewContactService(contactRepo, auditRepo, workspaceRepo, companyRepo)
-	taskService := service.NewTaskService(taskRepo, auditRepo, workspaceRepo)
-	companyService := service.NewCompanyService(companyRepo, auditRepo, workspaceRepo)
-	pipelineService := service.NewPipelineService(pipelineRepo, auditRepo, workspaceRepo)
-	dealService := service.NewDealService(dealRepo, pipelineRepo, workspaceRepo, auditRepo)
-	activityService := service.NewActivityService(activityRepo, workspaceRepo, auditRepo)
-	portfolioService := service.NewPortfolioService(portfolioRepo, workspaceRepo, auditRepo)
+	contactService := service.NewContactService(contactRepo, auditRepo, workspaceRepo, companyRepo, log)
+	taskService := service.NewTaskService(taskRepo, auditRepo, workspaceRepo, log)
+	companyService := service.NewCompanyService(companyRepo, auditRepo, workspaceRepo, log)
+	pipelineService := service.NewPipelineService(pipelineRepo, auditRepo, workspaceRepo, log)
+	dealService := service.NewDealService(dealRepo, pipelineRepo, workspaceRepo, auditRepo, log)
+	activityService := service.NewActivityService(activityRepo, workspaceRepo, auditRepo, log)
+	portfolioService := service.NewPortfolioService(portfolioRepo, workspaceRepo, auditRepo, log)
 
 	// Initialize handlers
 	contactHandler := handler.NewContactHandler(contactService)

@@ -9,7 +9,10 @@ import (
 	"strings"
 
 	"linkko-api/internal/domain"
+	"linkko-api/internal/observability/logger"
 	"linkko-api/internal/repo"
+
+	"go.uber.org/zap"
 )
 
 var (
@@ -23,21 +26,47 @@ type DealService struct {
 	pipelineRepo  *repo.PipelineRepository
 	workspaceRepo *repo.WorkspaceRepository
 	auditRepo     *repo.AuditRepo
+	log           *logger.Logger
 }
 
-func NewDealService(dealRepo *repo.DealRepository, pipelineRepo *repo.PipelineRepository, workspaceRepo *repo.WorkspaceRepository, auditRepo *repo.AuditRepo) *DealService {
+func NewDealService(dealRepo *repo.DealRepository, pipelineRepo *repo.PipelineRepository, workspaceRepo *repo.WorkspaceRepository, auditRepo *repo.AuditRepo, log *logger.Logger) *DealService {
 	return &DealService{
 		dealRepo:      dealRepo,
 		pipelineRepo:  pipelineRepo,
 		workspaceRepo: workspaceRepo,
 		auditRepo:     auditRepo,
+		log:           log,
 	}
 }
 
-func (s *DealService) CreateDeal(ctx context.Context, workspaceID, actorID string, req *domain.CreateDealRequest) (*domain.Deal, error) {
+// getMemberRoleWithLogging wraps GetMemberRole with authorization audit logging.
+func (s *DealService) getMemberRoleWithLogging(ctx context.Context, actorID, workspaceID string) (domain.Role, error) {
 	role, err := s.workspaceRepo.GetMemberRole(ctx, actorID, workspaceID)
 	if err != nil {
-		return nil, fmt.Errorf("get member role: %w", err)
+		s.log.Error(ctx, "failed to get member role",
+			logger.Module("deal"),
+			logger.Action("authorization"),
+			zap.String("actor_id", actorID),
+			zap.String("workspace_id", workspaceID),
+			zap.Error(err),
+		)
+		return "", fmt.Errorf("get member role: %w", err)
+	}
+
+	s.log.Info(ctx, "workspace access granted",
+		logger.Module("deal"),
+		logger.Action("authorization"),
+		zap.String("actor_id", actorID),
+		zap.String("workspace_id", workspaceID),
+		zap.String("role", string(role)),
+	)
+	return role, nil
+}
+
+func (s *DealService) CreateDeal(ctx context.Context, workspaceID, actorID string, req *domain.CreateDealRequest) (*domain.Deal, error) {
+	role, err := s.getMemberRoleWithLogging(ctx, actorID, workspaceID)
+	if err != nil {
+		return nil, err
 	}
 	if !domain.CanModifyContacts(role) {
 		return nil, ErrUnauthorized
@@ -86,7 +115,7 @@ func (s *DealService) CreateDeal(ctx context.Context, workspaceID, actorID strin
 }
 
 func (s *DealService) GetDeal(ctx context.Context, workspaceID, dealID, actorID string) (*domain.Deal, error) {
-	role, err := s.workspaceRepo.GetMemberRole(ctx, actorID, workspaceID)
+	role, err := s.getMemberRoleWithLogging(ctx, actorID, workspaceID)
 	if err != nil {
 		return nil, err
 	}
@@ -98,7 +127,7 @@ func (s *DealService) GetDeal(ctx context.Context, workspaceID, dealID, actorID 
 }
 
 func (s *DealService) ListDeals(ctx context.Context, workspaceID, actorID string, pipelineID, stageID, ownerID *string) ([]domain.Deal, error) {
-	role, err := s.workspaceRepo.GetMemberRole(ctx, actorID, workspaceID)
+	role, err := s.getMemberRoleWithLogging(ctx, actorID, workspaceID)
 	if err != nil {
 		return nil, err
 	}
@@ -110,7 +139,7 @@ func (s *DealService) ListDeals(ctx context.Context, workspaceID, actorID string
 }
 
 func (s *DealService) UpdateDeal(ctx context.Context, workspaceID, dealID, actorID string, req *domain.UpdateDealRequest) (*domain.Deal, error) {
-	role, err := s.workspaceRepo.GetMemberRole(ctx, actorID, workspaceID)
+	role, err := s.getMemberRoleWithLogging(ctx, actorID, workspaceID)
 	if err != nil {
 		return nil, err
 	}
@@ -133,7 +162,7 @@ func (s *DealService) UpdateDeal(ctx context.Context, workspaceID, dealID, actor
 
 // UpdateDealStage handles the transactional movement of a deal through the funnel.
 func (s *DealService) UpdateDealStage(ctx context.Context, workspaceID, dealID, actorID string, req *domain.UpdateDealStageRequest) (*domain.Deal, error) {
-	role, err := s.workspaceRepo.GetMemberRole(ctx, actorID, workspaceID)
+	role, err := s.getMemberRoleWithLogging(ctx, actorID, workspaceID)
 	if err != nil {
 		return nil, err
 	}
