@@ -61,7 +61,7 @@ func runServe(cmd *cobra.Command, args []string) error {
 
 	// Run database migrations
 	log.Info(ctx, "running database migrations")
-	if err := database.RunMigrations(cfg.DatabaseURL); err != nil {
+	if err := database.RunMigrations(); err != nil {
 		return fmt.Errorf("failed to run migrations: %w", err)
 	}
 	log.Info(ctx, "migrations completed successfully")

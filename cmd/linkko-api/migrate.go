@@ -3,7 +3,6 @@ package main
 import (
 	"fmt"
 
-	"linkko-api/internal/config"
 	"linkko-api/internal/database"
 
 	"github.com/spf13/cobra"
@@ -21,19 +20,10 @@ func init() {
 }
 
 func runMigrate(cmd *cobra.Command, args []string) error {
-	// Load configuration
-	cfg, err := config.LoadConfig()
-	if err != nil {
-		return fmt.Errorf("failed to load config: %w", err)
-	}
-
-	fmt.Println("Running database migrations...")
-
 	// Run migrations
-	if err := database.RunMigrations(cfg.DatabaseURL); err != nil {
+	if err := database.RunMigrations(); err != nil {
 		return fmt.Errorf("failed to run migrations: %w", err)
 	}
 
-	fmt.Println("✓ Migrations completed successfully")
 	return nil
 }
